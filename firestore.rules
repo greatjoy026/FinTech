@@ -1,0 +1,68 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Validation Helpers
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+    function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
+    
+    function isValidUser(data) {
+      return data.keys().hasAll(['phoneNumber', 'role', 'createdAt']) 
+        && data.keys().size() == 3
+        && data.phoneNumber is string && data.phoneNumber.size() <= 20
+        && data.role is string && data.role in ['ADMIN', 'CUSTOMER', 'MERCHANT', 'SCHOOL', 'NGO', 'PAYROLL_MANAGER']
+        && data.createdAt is timestamp;
+    }
+
+    function isValidSession(data) {
+      return data.keys().hasAll(['userId', 'refreshToken', 'expiresAt', 'createdAt'])
+        && data.keys().size() == 4
+        && data.userId is string && data.userId.size() <= 128
+        && data.refreshToken is string && data.refreshToken.size() <= 256
+        && data.expiresAt is timestamp
+        && data.createdAt is timestamp;
+    }
+
+    function isValidOtpCode(data) {
+      return data.keys().hasAll(['phoneNumber', 'code', 'expiresAt', 'createdAt'])
+        && data.keys().size() == 4
+        && data.phoneNumber is string && data.phoneNumber.size() <= 20
+        && data.code is string && data.code.size() == 6
+        && data.expiresAt is timestamp
+        && data.createdAt is timestamp;
+    }
+
+    // Users Collection
+    match /users/{userId} {
+      allow read: if true; 
+      allow create: if isValidId(userId) && isValidUser(incoming());
+      allow update: if isValidId(userId) && isValidUser(incoming()) && incoming().createdAt == existing().createdAt;
+    }
+
+    // Sessions Collection
+    match /sessions/{sessionId} {
+      // Allow unrestricted listing for backend lookup
+      allow list: if true;
+      allow read: if isValidId(sessionId);
+      allow create: if isValidId(sessionId) && isValidSession(incoming());
+      // Not typically updating sessions, but allow if it matches schema and keeps createdAt
+      allow update: if isValidId(sessionId) && isValidSession(incoming()) && incoming().createdAt == existing().createdAt;
+      allow delete: if isValidId(sessionId);
+    }
+
+    // OtpCodes Collection
+    match /otp_codes/{otpId} {
+      allow list: if true;
+      allow read: if isValidId(otpId);
+      allow create: if isValidId(otpId) && isValidOtpCode(incoming());
+      allow update: if isValidId(otpId) && isValidOtpCode(incoming()) && incoming().createdAt == existing().createdAt;
+      allow delete: if isValidId(otpId);
+    }
+  }
+}

@@ -1,0 +1,53 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "A user in the system.",
+      "type": "object",
+      "properties": {
+        "phoneNumber": { "type": "string" },
+        "role": { "type": "string", "enum": ["ADMIN", "CUSTOMER", "MERCHANT", "SCHOOL", "NGO", "PAYROLL_MANAGER"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["phoneNumber", "role", "createdAt"]
+    },
+    "Session": {
+      "title": "Session",
+      "description": "A user authenticated session.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "refreshToken": { "type": "string" },
+        "expiresAt": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "refreshToken", "expiresAt", "createdAt"]
+    },
+    "OtpCode": {
+      "title": "OtpCode",
+      "description": "An OTP code for authentication.",
+      "type": "object",
+      "properties": {
+        "phoneNumber": { "type": "string" },
+        "code": { "type": "string" },
+        "expiresAt": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["phoneNumber", "code", "expiresAt", "createdAt"]
+    }
+  },
+  "firestore": {
+    "users": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "Stores user profiles."
+    },
+    "sessions": {
+      "schema": { "$ref": "#/entities/Session" },
+      "description": "Stores active refresh tokens."
+    },
+    "otp_codes": {
+      "schema": { "$ref": "#/entities/OtpCode" },
+      "description": "Stores OTP codes temporarily."
+    }
+  }
+}
