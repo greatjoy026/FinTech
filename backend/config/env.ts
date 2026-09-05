@@ -24,6 +24,15 @@ function requireRedisConfig() {
   if (!process.env.REDIS_PORT?.trim()) throw new Error('[Config] REDIS_PORT is required in production');
 }
 
+function configuredOrigins(): string[] {
+  const value = process.env.APP_URL?.trim();
+  if (!value) {
+    if (isProduction) throw new Error('[Config] APP_URL is required in production');
+    return ['http://localhost:3000'];
+  }
+  return value.split(',').map(origin => origin.trim()).filter(Boolean);
+}
+
 export const env = {
   nodeEnv: process.env.NODE_ENV || 'development',
   jwtSecret: requiredSecret('JWT_SECRET', 32),
@@ -32,6 +41,7 @@ export const env = {
   redisHost: process.env.REDIS_HOST?.trim() || '127.0.0.1',
   redisPort: Number(process.env.REDIS_PORT || 6379),
   redisPassword: process.env.REDIS_PASSWORD?.trim() || undefined,
+  allowedOrigins: configuredOrigins(),
 };
 
 requireTrustedFirestoreConfig();

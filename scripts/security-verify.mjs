@@ -9,20 +9,21 @@ const files = {
 };
 
 const assertions = [
-  ['Firestore global deny', /match \/\{document=\*\*\}[^]*allow read, write: if false/],
+  ['Firestore global deny', /match \/\{document=\*\*\}[^]*allow read, write: if false/.test(files.rules)],
   ['No middleware fallback JWT secret', !/\|\|\s*['\"]/.test(files.middleware)],
-  ['JWT verified with env secret', /jwt\.verify\(authHeader\.slice\(7\), env\.jwtSecret\)/],
-  ['OTP is hashed', /codeHash: hashSecret\(code\)/],
-  ['Refresh token is hashed', /refreshTokenHash: hashSecret\(refreshToken\)/],
-  ['Webhook signature required', /Invalid webhook signature/],
-  ['Webhook HMAC', /createHmac\(['\"]sha256/],
-  ['Webhook enqueued durably', /enqueueWebhook\(\{\s*webhookEventId:\s*(?:event|storedEvent|existing)\.id\s*\}\)/],
-  ['Realtime JWT middleware', /this\.io\.use\(\(socket, next\)/],
-  ['Realtime admin authorization', /user\.role !== ['\"]ADMIN['\"]/],
+  ['JWT verified with env secret', /jwt\.verify\(authHeader\.slice\(7\), env\.jwtSecret,\s*\{/.test(files.middleware)],
+  ['JWT issuer and audience enforced', /issuer:\s*['\"]fintech-auth['\"][\s\S]*audience:\s*['\"]fintech-api['\"]/.test(files.middleware)],
+  ['OTP is hashed', /codeHash: hashSecret\(code\)/.test(files.auth)],
+  ['Refresh token is hashed', /refreshTokenHash: hashSecret\(refreshToken\)/.test(files.auth)],
+  ['Webhook signature required', /Invalid webhook signature/.test(files.webhook)],
+  ['Webhook HMAC', /createHmac\(['\"]sha256/.test(files.webhook)],
+  ['Webhook enqueued durably', /enqueueWebhook\(\{\s*webhookEventId:\s*(?:event|storedEvent|existing)\.id\s*\}\)/.test(files.webhook)],
+  ['Realtime JWT middleware', /this\.io\.use\(\(socket, next\)/.test(files.realtime)],
+  ['Realtime admin authorization', /user\.role !== ['\"]ADMIN['\"]/.test(files.realtime)],
   ['No wildcard socket CORS', !/origin:\s*['\"]\*['\"]/.test(files.realtime)]
 ];
 
-const failures = assertions.filter(([, check]) => typeof check === 'boolean' ? !check : !check.test(files.rules + files.middleware + files.auth + files.webhook + files.realtime)).map(([name]) => name);
+const failures = assertions.filter(([, passed]) => !passed).map(([name]) => name);
 if (failures.length) {
   console.error('Security verification failed:', failures.join(', '));
   process.exit(1);
