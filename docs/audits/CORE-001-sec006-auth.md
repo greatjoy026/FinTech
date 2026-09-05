@@ -1,7 +1,7 @@
 # CORE-001 SEC-006 — Authentication & Session Security
 
 ## Status
-Implementation complete on the remediation branch pending CI verification and review.
+Implementation complete on the remediation branch; CI verification is required before review/merge.
 
 ## Controls implemented
 
@@ -31,5 +31,7 @@ Redis is required for production authentication abuse throttling and refresh-tok
 
 ## Verification
 `npm run auth:security:verify` executes regression assertions for OTP hashing/matching, attempt bounds, refreshable/replay states, token entropy, and hashed refresh-token storage. The CI security workflow executes this gate before TypeScript and production build checks.
+
+The CI workflow previously exposed a TypeScript failure during this task. The Redis lock implementation was corrected to avoid relying on an untyped dynamic overload; the latest branch head contains that correction and this documentation commit triggers a fresh CI run.
 
 This task does not implement or redesign wallet, ledger, payment-provider, settlement, product, or inventory behavior.
