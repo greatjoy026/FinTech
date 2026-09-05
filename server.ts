@@ -7,6 +7,7 @@ import helmet from 'helmet';
 import { authRouter } from './backend/auth/auth.controller';
 import { authenticate, requireAdmin, type AuthRequest } from './backend/auth/auth.middleware';
 import { env } from './backend/config/env';
+import { abuseRateLimit } from './backend/http/abuse-rate-limit';
 import { webhookController } from './src/backend/webhook/webhook.controller';
 import { RealtimeGateway } from './src/backend/realtime/socket.gateway';
 import { QueueService } from './src/backend/queue/queue.service';
@@ -45,7 +46,7 @@ async function startServer() {
   app.use(express.urlencoded({ extended: false, limit: '100kb' }));
 
   app.use('/api/auth', authRouter);
-  app.use('/api/reports', authenticate, requireAdmin, reportingRouter);
+  app.use('/api/reports', authenticate, requireAdmin, abuseRateLimit({ scope: 'reports', limit: 60, windowSeconds: 60 }), reportingRouter);
   app.post('/api/webhooks/monime', webhookController);
 
   RealtimeGateway.initialize(server);
@@ -57,8 +58,8 @@ async function startServer() {
   }
 
   app.get('/api/health', (_req, res) => res.json({ status: 'ok', service: 'Monivexa Ops API', timestamp: new Date().toISOString() }));
-  app.get('/api/protected', authenticate, (req: AuthRequest, res) => res.json({ message: 'Success', user: req.user }));
-  app.get('/api/admin-only', authenticate, requireAdmin, (_req, res) => res.json({ message: 'Welcome Admin' }));
+  app.get('/api/protected', authenticate, abuseRateLimit({ scope: 'protected', limit: 120, windowSeconds: 60 }), (req: AuthRequest, res) => res.json({ message: 'Success', user: req.user }));
+  app.get('/api/admin-only', authenticate, requireAdmin, abuseRateLimit({ scope: 'admin-only', limit: 60, windowSeconds: 60 }), (_req, res) => res.json({ message: 'Welcome Admin' }));
 
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({ server: { middlewareMode: true }, appType: 'spa' });
