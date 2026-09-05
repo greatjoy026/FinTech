@@ -18,11 +18,13 @@ authRouter.post('/request-otp', async (req: Request, res: Response) => {
 
 authRouter.post('/verify-otp', async (req: Request, res: Response) => {
   try {
-    const { phoneNumber, code, role } = req.body;
+    // Authentication establishes identity only. Role/permission data must
+    // never be accepted from the client as an authorization input.
+    const { phoneNumber, code } = req.body;
     if (!phoneNumber || !code) {
       return res.status(400).json({ error: 'Phone number and code are required' });
     }
-    const result = await AuthService.verifyOtpAndLogin(phoneNumber, code, role);
+    const result = await AuthService.verifyOtpAndLogin(phoneNumber, code);
     res.json(result);
   } catch (error: any) {
     res.status(401).json({ error: error.message });

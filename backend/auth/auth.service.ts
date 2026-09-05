@@ -29,7 +29,10 @@ export class AuthService {
   }
 
   // 2. Verify OTP & Login
-  static async verifyOtpAndLogin(phoneNumber: string, code: string, role?: string) {
+  // Authentication establishes identity only. Authorization roles are
+  // resolved from trusted server-side user data and are never supplied by
+  // the caller during login.
+  static async verifyOtpAndLogin(phoneNumber: string, code: string) {
     let otpRecord: any = null;
     let otpId = '';
 
@@ -65,7 +68,7 @@ export class AuthService {
       await deleteDoc(doc(db, 'otp_codes', otpId));
     } catch (e) {}
 
-    // Find or create user
+    // Find or create user. The role is authoritative server-side state.
     let user: any = null;
     let userId = '';
     
@@ -75,20 +78,11 @@ export class AuthService {
       if (!uSnap.empty) {
         userId = uSnap.docs[0].id;
         user = uSnap.docs[0].data();
-        // For testing prototype: Update their role to whatever they selected
-        if (role && user.role !== role) {
-          user.role = role;
-          try {
-            await setDoc(doc(db, 'users', userId), { role: role }, { merge: true });
-          } catch (e) {
-            handleFirestoreError(e, OperationType.UPDATE, 'users');
-          }
-        }
       } else {
         userId = crypto.randomUUID();
         user = {
           phoneNumber,
-          role: role || 'CUSTOMER',
+          role: 'CUSTOMER',
           createdAt: Timestamp.now()
         };
         await setDoc(doc(db, 'users', userId), user);
@@ -97,7 +91,7 @@ export class AuthService {
       handleFirestoreError(e, OperationType.WRITE, 'users');
     }
 
-    // Generate tokens
+    // Generate tokens using only the trusted server-side user role.
     return await this.generateTokens(userId, user.role);
   }
 
