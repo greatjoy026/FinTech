@@ -18,7 +18,7 @@ This is tamper-evidence at the application/data boundary; database administrator
 
 ## Mutation/deletion policy
 
-The application does not expose update/delete operations for audit records. Future administrative tooling must treat audit records as append-only. Retention/archival should be implemented as controlled infrastructure rather than destructive application CRUD.
+The application does not expose update/delete operations for audit records. The former duplicate legacy audit service under `src/backend/audit/` was removed so there is one authoritative application audit write path. Future administrative tooling must treat audit records as append-only. Retention/archival should be implemented as controlled infrastructure rather than destructive application CRUD.
 
 ## Failure semantics
 
