@@ -57,6 +57,7 @@ model Wallet {
   updatedAt DateTime @updatedAt
   transactions WalletTransaction[]
   freezes WalletFreeze[]
+  financialAccountMapping FinancialWalletAccount?
 }
 
 model WalletTransaction {
@@ -173,4 +174,120 @@ model Payout {
   status String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+enum FinancialAccountType {
+  ASSET
+  LIABILITY
+  EQUITY
+  REVENUE
+  EXPENSE
+}
+
+enum FinancialAccountStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum JournalStatus {
+  DRAFT
+  POSTED
+  VOIDED
+}
+
+enum JournalLineDirection {
+  DEBIT
+  CREDIT
+}
+
+enum FinancialHoldStatus {
+  ACTIVE
+  RELEASED
+  EXPIRED
+  CAPTURED
+}
+
+model FinancialAccount {
+  id String @id @default(uuid())
+  code String @unique
+  name String
+  type FinancialAccountType
+  currency String @db.VarChar(3)
+  status FinancialAccountStatus @default(ACTIVE)
+  parentId String?
+  metadata Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  parent FinancialAccount? @relation("FinancialAccountHierarchy", fields: [parentId], references: [id])
+  children FinancialAccount[] @relation("FinancialAccountHierarchy")
+  lines FinancialJournalLine[]
+  walletMapping FinancialWalletAccount?
+  holdsFrom FinancialHold[] @relation("HoldSourceAccount")
+  holdsTo FinancialHold[] @relation("HoldDestinationAccount")
+  @@index([type, status])
+  @@index([currency, status])
+  @@index([parentId])
+}
+
+model FinancialJournal {
+  id String @id @default(uuid())
+  reference String @unique
+  description String
+  currency String @db.VarChar(3)
+  status JournalStatus @default(DRAFT)
+  idempotencyKey String @unique
+  requestHash String
+  source String
+  metadata Json?
+  createdAt DateTime @default(now())
+  postedAt DateTime?
+  voidedAt DateTime?
+  lines FinancialJournalLine[]
+  @@index([status, createdAt])
+  @@index([currency, status])
+}
+
+model FinancialJournalLine {
+  id String @id @default(uuid())
+  journalId String
+  accountId String
+  direction JournalLineDirection
+  amount BigInt
+  description String?
+  metadata Json?
+  createdAt DateTime @default(now())
+  journal FinancialJournal @relation(fields: [journalId], references: [id], onDelete: Restrict)
+  account FinancialAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  @@index([journalId])
+  @@index([accountId, createdAt])
+}
+
+model FinancialWalletAccount {
+  id String @id @default(uuid())
+  walletId String @unique
+  accountId String @unique
+  createdAt DateTime @default(now())
+  wallet Wallet @relation(fields: [walletId], references: [id], onDelete: Restrict)
+  account FinancialAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+}
+
+model FinancialHold {
+  id String @id @default(uuid())
+  reference String @unique
+  sourceAccountId String
+  destinationAccountId String
+  amount BigInt
+  currency String @db.VarChar(3)
+  status FinancialHoldStatus @default(ACTIVE)
+  idempotencyKey String @unique
+  reason String
+  expiresAt DateTime?
+  createdAt DateTime @default(now())
+  releasedAt DateTime?
+  capturedAt DateTime?
+  sourceAccount FinancialAccount @relation("HoldSourceAccount", fields: [sourceAccountId], references: [id], onDelete: Restrict)
+  destinationAccount FinancialAccount @relation("HoldDestinationAccount", fields: [destinationAccountId], references: [id], onDelete: Restrict)
+  @@index([sourceAccountId, status])
+  @@index([destinationAccountId, status])
+  @@index([status, expiresAt])
 }
