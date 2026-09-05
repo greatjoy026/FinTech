@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: [main]
   push:
-    branches: [main, 'remediation/**', 'core-002-*']
+    branches: [main, 'remediation/**', 'core-002-*', 'core-003-*']
 
 permissions:
   contents: read
@@ -46,6 +46,12 @@ jobs:
         run: npm run architecture-closure:security:verify
       - name: CORE-002 accounting regression gate
         run: npm run accounting:security:verify
+      - name: CORE-002 executable accounting invariant tests
+        run: npm run accounting:invariants:test
+      - name: CORE-003 wallet integrity regression gate
+        run: npm run wallet:security:verify
+      - name: CORE-003 executable wallet invariant tests
+        run: npm run wallet:invariants:test
       - name: Authentication security regression gate
         run: npm run auth:security:verify
       - name: Authorization security regression gate
