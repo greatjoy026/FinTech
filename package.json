@@ -11,6 +11,7 @@
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
     "security:verify": "node scripts/security-verify.mjs",
+    "security:regression:verify": "tsx scripts/security-regression-verify.ts",
     "auth:security:verify": "tsx scripts/auth-security-verify.ts",
     "authorization:security:verify": "tsx scripts/authorization-security-verify.ts",
     "api:security:verify": "node scripts/api-security-verify.mjs",
@@ -19,6 +20,7 @@
     "config:security:verify": "node scripts/config-security-verify.mjs",
     "dependency:security:verify": "node scripts/dependency-security-verify.mjs",
     "bundle:security:verify": "node scripts/bundle-security-verify.mjs",
+    "observability:security:verify": "node scripts/observability-security-verify.mjs",
     "postinstall": "prisma generate"
   },
   "dependencies": {
