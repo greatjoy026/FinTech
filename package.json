@@ -27,6 +27,8 @@
     "release:security:verify": "node scripts/release-security-verify.mjs",
     "data-recovery:security:verify": "node scripts/data-recovery-security-verify.mjs",
     "access-control:security:verify": "node scripts/access-control-security-verify.mjs",
+    "governance:security:verify": "node scripts/governance-security-verify.mjs",
+    "architecture-closure:security:verify": "node scripts/architecture-closure-security-verify.mjs",
     "postinstall": "prisma generate"
   },
   "dependencies": {
