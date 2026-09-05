@@ -3,7 +3,7 @@ import path from 'path';
 import http from 'http';
 import { createServer as createViteServer } from 'vite';
 import { authRouter } from './backend/auth/auth.controller';
-import { authenticate, requireAdmin } from './backend/auth/auth.middleware';
+import { authenticate, requireAdmin, type AuthRequest } from './backend/auth/auth.middleware';
 import { webhookController } from './src/backend/webhook/webhook.controller';
 import { RealtimeGateway } from './src/backend/realtime/socket.gateway';
 import { QueueService } from './src/backend/queue/queue.service';
@@ -32,7 +32,7 @@ async function startServer() {
   }
 
   app.get('/api/health', (_req, res) => res.json({ status: 'ok', service: 'Monivexa Ops API', timestamp: new Date().toISOString() }));
-  app.get('/api/protected', authenticate, (req, res) => res.json({ message: 'Success', user: req.user }));
+  app.get('/api/protected', authenticate, (req: AuthRequest, res) => res.json({ message: 'Success', user: req.user }));
   app.get('/api/admin-only', authenticate, requireAdmin, (_req, res) => res.json({ message: 'Welcome Admin' }));
 
   if (process.env.NODE_ENV !== 'production') {
