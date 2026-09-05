@@ -10,6 +10,10 @@ import { env } from './backend/config/env';
 import { abuseRateLimit } from './backend/http/abuse-rate-limit';
 import { requestIdMiddleware, securityMethodGuard, errorHandler, notFoundHandler } from './backend/http/security.middleware';
 import { AuditService } from './backend/audit/audit.service';
+import { logger } from './backend/observability/logger';
+import { observabilityMiddleware } from './backend/observability/middleware';
+import { prometheusMetrics } from './backend/observability/metrics';
+import { liveness, readiness } from './backend/observability/health';
 import { webhookController } from './src/backend/webhook/webhook.controller';
 import { RealtimeGateway } from './src/backend/realtime/socket.gateway';
 import { QueueService } from './src/backend/queue/queue.service';
@@ -23,6 +27,7 @@ async function startServer() {
   app.disable('x-powered-by');
   app.set('trust proxy', process.env.TRUST_PROXY === 'true' ? 1 : false);
   app.use(requestIdMiddleware);
+  app.use(observabilityMiddleware);
   app.use(securityMethodGuard);
   app.use(helmet({ contentSecurityPolicy: process.env.NODE_ENV === 'production', crossOriginEmbedderPolicy: false }));
   app.use(cors({
@@ -40,10 +45,12 @@ async function startServer() {
   app.post('/api/webhooks/monime', webhookController);
 
   RealtimeGateway.initialize(server);
-  try { QueueService.initializeProcessors(); console.log('[Queue] Processors initialized'); }
-  catch (e) { console.error('[Queue] Processor initialization failed:', e); }
+  try { QueueService.initializeProcessors(); logger.info('QUEUE_PROCESSORS_INITIALIZED'); }
+  catch (error) { logger.error('QUEUE_PROCESSOR_INITIALIZATION_FAILURE', { error: error instanceof Error ? error.name : 'unknown' }); }
 
-  app.get('/api/health', (_req, res) => res.json({ status: 'ok', service: 'Monivexa Ops API', timestamp: new Date().toISOString() }));
+  app.get('/api/health', liveness);
+  app.get('/api/ready', readiness);
+  app.get('/api/metrics', (_req, res) => res.type('text/plain; version=0.0.4').send(prometheusMetrics()));
   app.get('/api/protected', authenticate, abuseRateLimit({ scope: 'protected', limit: 120, windowSeconds: 60 }), (req: AuthRequest, res) => res.json({ message: 'Success', user: req.user }));
   app.get('/api/admin-only', authenticate, requireAdmin, abuseRateLimit({ scope: 'admin-only', limit: 60, windowSeconds: 60 }), async (req: AuthRequest, res, next) => {
     try {
@@ -73,10 +80,10 @@ async function startServer() {
   }
   app.use(notFoundHandler);
   app.use(errorHandler);
-  server.listen(PORT, '0.0.0.0', () => console.log(`Monivexa Financial Engine running on http://0.0.0.0:${PORT}`));
+  server.listen(PORT, '0.0.0.0', () => logger.info('SERVER_STARTED', { port: PORT }));
 }
 
 startServer().catch(error => {
-  console.error('[Startup] Fatal configuration/startup error:', error instanceof Error ? error.message : 'unknown error');
+  logger.error('STARTUP_FATAL', { error: error instanceof Error ? error.message : 'unknown error' });
   process.exit(1);
 });
