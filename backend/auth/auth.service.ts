@@ -1,14 +1,29 @@
 import { db, handleFirestoreError, OperationType } from '../firebase';
-import { collection, query, where, getDocs, setDoc, doc, deleteDoc, Timestamp, orderBy, limit } from 'firebase/firestore';
+import { collection, query, where, getDocs, setDoc, doc, deleteDoc, Timestamp } from 'firebase/firestore';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
+import { env } from '../config/env';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_key_for_dev_only';
+function hashOtp(code: string): string {
+  return crypto.createHash('sha256').update(code, 'utf8').digest('hex');
+}
+
+function secureOtp(): string {
+  return crypto.randomInt(100000, 1000000).toString();
+}
+
+function otpMatches(storedHash: string, suppliedCode: string): boolean {
+  const suppliedHash = Buffer.from(hashOtp(suppliedCode), 'utf8');
+  const expectedHash = Buffer.from(storedHash, 'utf8');
+  return suppliedHash.length === expectedHash.length && crypto.timingSafeEqual(suppliedHash, expectedHash);
+}
 
 export class AuthService {
   // 1. Generate OTP
   static async requestOtp(phoneNumber: string) {
-    const code = '123456'; 
+    // A deterministic OTP is permitted only for explicitly configured non-production
+    // environments. Production always uses a cryptographically secure OTP.
+    const code = env.authDevOtp ?? secureOtp();
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 mins
 
     const newId = crypto.randomUUID();
@@ -17,7 +32,7 @@ export class AuthService {
     try {
       await setDoc(otpRef, {
         phoneNumber,
-        code,
+        codeHash: hashOtp(code),
         expiresAt: Timestamp.fromDate(expiresAt),
         createdAt: Timestamp.now()
       });
@@ -25,6 +40,8 @@ export class AuthService {
       handleFirestoreError(e, OperationType.CREATE, 'otp_codes');
     }
 
+    // The actual SMS delivery integration is intentionally outside SEC-002.
+    // Never return or log the OTP from the production API response.
     return { message: 'OTP sent successfully' };
   }
 
@@ -39,21 +56,19 @@ export class AuthService {
     try {
       const q = query(
         collection(db, 'otp_codes'),
-        where('phoneNumber', '==', phoneNumber),
-        where('code', '==', code)
+        where('phoneNumber', '==', phoneNumber)
       );
       const snapshot = await getDocs(q);
       
-      const validOtps = snapshot.docs.filter(d => {
+      const validOtp = snapshot.docs.find(d => {
         const data = d.data();
-        return data.expiresAt.toDate() > new Date();
+        const expiresAt = data.expiresAt?.toDate?.();
+        return Boolean(expiresAt) && expiresAt > new Date() && typeof data.codeHash === 'string' && otpMatches(data.codeHash, code);
       });
 
-      if (validOtps.length > 0) {
-        // Just take the first valid one
-        const d = validOtps[0];
-        otpRecord = d.data();
-        otpId = d.id;
+      if (validOtp) {
+        otpRecord = validOtp.data();
+        otpId = validOtp.id;
       }
     } catch (e) {
       handleFirestoreError(e, OperationType.LIST, 'otp_codes');
@@ -63,7 +78,8 @@ export class AuthService {
       throw new Error('Invalid or expired OTP');
     }
 
-    // Mark used / delete
+    // Mark used / delete. A future authentication hardening task should make
+    // this consume operation transactional against concurrent verification.
     try {
       await deleteDoc(doc(db, 'otp_codes', otpId));
     } catch (e) {}
@@ -97,7 +113,7 @@ export class AuthService {
 
   // 3. Generate JWT & Refresh Tokens
   static async generateTokens(userId: string, role: string) {
-    const accessToken = jwt.sign({ userId, role }, JWT_SECRET, { expiresIn: '15m' });
+    const accessToken = jwt.sign({ userId, role }, env.jwtSecret, { expiresIn: '15m' });
     const refreshTokenBase = crypto.randomBytes(40).toString('hex');
     
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
@@ -173,4 +189,3 @@ export class AuthService {
     }
   }
 }
-
