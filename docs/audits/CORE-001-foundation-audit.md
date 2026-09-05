@@ -1,6 +1,6 @@
 # CORE-001 — FinTech Foundation Audit
 
-**Status:** Baseline audit complete — remediation planning
+**Status:** Baseline audit complete — remediation in progress
 **Branch:** `remediation/core-001-foundation`
 **Audited baseline:** `main` at `bd765fb283be2afb1ffbe0172cd7d3ea891a71fb`
 **Scope:** Security, identity, financial integrity, database, payments, webhooks, queues, realtime, QA, operations, and architecture.
@@ -9,17 +9,25 @@
 
 The repository is an architectural prototype/foundation, not production-ready for real-money operations. Do not expand high-risk financial functionality until the P0 security controls and P1 financial invariants below are implemented and tested.
 
+## Remediation Status
+
+- **SEC-001 — Client-controlled role assignment:** Remediated and merged to `main`.
+- **SEC-002 — Authentication secrets/OTP hardening:** Implementation completed on the remediation branch; PR #3 is the review gate.
+- **SEC-003 and later:** Not yet implemented; remain separate scope-controlled tasks.
+
 ## P0 — Critical Findings
 
 ### SEC-001 — Client-controlled role assignment
 `POST /api/auth/verify-otp` accepts `role`, and `AuthService.verifyOtpAndLogin()` uses that value when updating or creating a user. The login UI explicitly allows selecting ADMIN, MERCHANT, SCHOOL, NGO, and other roles. This creates a privilege-escalation path.
 
-**Required remediation:** remove role from the authentication trust boundary. Resolve roles only from a trusted server-side identity/organization record. Role changes must use an authorized administrative workflow and audit trail.
+**Status:** Remediated. Authentication now establishes identity only; roles are resolved from trusted server-side user data.
 
 ### SEC-002 — Hardcoded authentication secrets/test credentials
-Authentication has a fallback JWT secret and a fixed OTP. The provider integration also has a fallback token. These must not exist in production code paths.
+Authentication had a fallback JWT secret and a fixed OTP. The provider integration also has a fallback token. These must not exist in production code paths.
 
-**Required remediation:** fail fast when required secrets are absent; generate cryptographically random OTPs; hash OTPs at rest where appropriate; enforce expiry, attempt limits, replay protection, and delivery-provider integration.
+**Status:** Implementation completed for the authentication boundary. JWT signing now requires `JWT_SECRET` with a minimum length and fails fast when missing. OTPs use Node's cryptographically secure `randomInt` in production, are hashed before storage, expire after five minutes, and are compared using a timing-safe comparison. A deterministic `AUTH_DEV_OTP` is allowed only outside production and is rejected if configured in production.
+
+**Remaining scope:** provider-secret cleanup, Firestore authorization/session hardening, attempt limiting, and transactional OTP consumption remain separate controls under SEC-003 and subsequent tasks.
 
 ### SEC-003 — Firestore authorization model is unsafe
 The Firestore rules permit public reads/lists and unauthenticated writes for users, sessions, and OTP documents. Schema validation does not compensate for exposing authentication/session material publicly.
@@ -140,8 +148,8 @@ A financial feature is **not Done** unless:
 
 ## Remediation Sequence
 
-1. **SEC-001** Remove client-controlled roles.
-2. **SEC-002** Remove hardcoded/fallback auth/provider secrets and OTP.
+1. **SEC-001** Remove client-controlled roles. **Completed.**
+2. **SEC-002** Remove hardcoded/fallback auth/provider secrets and OTP. **Auth portion completed; review pending.**
 3. **SEC-003** Lock down Firestore authentication/session data.
 4. **SEC-004** Implement webhook signature verification and durable event intake.
 5. **SEC-005** Secure realtime authorization.
