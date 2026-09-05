@@ -57,6 +57,7 @@ model Wallet {
   updatedAt DateTime @updatedAt
   transactions WalletTransaction[]
   freezes WalletFreeze[]
+  financialAccountMapping FinancialWalletAccount?
 }
 
 model WalletTransaction {
@@ -175,8 +176,6 @@ model Payout {
   updatedAt DateTime @updatedAt
 }
 
-// CORE-002 authoritative accounting foundation.
-// Legacy ledger models above are retained for compatibility and are not the source of truth for new postings.
 enum FinancialAccountType {
   ASSET
   LIABILITY
@@ -237,6 +236,7 @@ model FinancialJournal {
   currency String @db.VarChar(3)
   status JournalStatus @default(DRAFT)
   idempotencyKey String @unique
+  requestHash String
   source String
   metadata Json?
   createdAt DateTime @default(now())
