@@ -4,9 +4,9 @@
 CORE-002 establishes the authoritative accounting boundary for the FinTech platform. New financial effects must be represented by immutable, balanced, double-entry journals in PostgreSQL.
 
 ## Source of truth
-`FinancialJournal` and `FinancialJournalLine` are the accounting source of truth for new financial activity. The pre-existing `JournalTransaction`, `LedgerEntry`, and `LedgerAccount` models remain for compatibility but are not authoritative for new CORE-002 postings.
+`FinancialJournal` and `FinancialJournalLine` are the **authoritative financial source of truth** for new financial activity. The pre-existing `JournalTransaction`, `LedgerEntry`, and `LedgerAccount` models remain for compatibility but are not authoritative for new CORE-002 postings.
 
-Wallet fields such as `availableBalance`, `pendingBalance`, and `reservedBalance` are operational projections. They must not be treated as independent accounting truth. The `FinancialWalletAccount` mapping associates a wallet with exactly one accounting account; future wallet workflows must post accounting entries rather than silently mutating a monetary balance.
+Wallet fields such as `availableBalance`, `pendingBalance`, and `reservedBalance` are operational projections. **Wallet balances are not authoritative accounting state.** The `FinancialWalletAccount` mapping associates a wallet with exactly one accounting account; future wallet workflows must post accounting entries rather than silently mutating a monetary balance.
 
 ## Double-entry invariant
 Every posted journal must contain at least two positive lines and:
