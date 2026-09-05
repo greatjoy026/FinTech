@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
+    "security:verify": "node scripts/security-verify.mjs",
     "postinstall": "prisma generate"
   },
   "dependencies": {
@@ -20,7 +21,6 @@
     "@prisma/client": "^7.8.0",
     "@tailwindcss/vite": "^4.1.14",
     "@tanstack/react-table": "^8.21.3",
-    "@vitejs/plugin-react": "^5.0.4",
     "bcryptjs": "^3.0.3",
     "bullmq": "^5.76.10",
     "class-variance-authority": "^0.7.1",
@@ -65,7 +65,5 @@
     "typescript": "~5.8.2",
     "vite": "^6.2.3"
   },
-  "overrides": {
-    "node-fetch": "^2.7.0"
-  }
+  "overrides": { "node-fetch": "^2.7.0" }
 }

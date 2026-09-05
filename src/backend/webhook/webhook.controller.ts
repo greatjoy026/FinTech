@@ -1,63 +1,48 @@
 import { Request, Response } from 'express';
+import crypto from 'crypto';
 import { prisma } from '../db/prisma';
+import { QueueService } from '../queue/queue.service';
+
+function rawPayload(req: Request): Buffer {
+  return (req as Request & { rawBody?: Buffer }).rawBody ?? Buffer.from(JSON.stringify(req.body ?? {}));
+}
+
+function verifySignature(req: Request): boolean {
+  const secret = process.env.MONIME_WEBHOOK_SECRET;
+  if (!secret) return false;
+  const supplied = String(req.headers['x-monime-signature'] ?? '').trim();
+  if (!supplied) return false;
+  const timestamp = String(req.headers['x-monime-timestamp'] ?? '').trim();
+  if (timestamp) {
+    const ts = Number(timestamp);
+    if (!Number.isFinite(ts) || Math.abs(Date.now() - ts * 1000) > 5 * 60 * 1000) return false;
+  }
+  const message = timestamp ? `${timestamp}.${rawPayload(req).toString('utf8')}` : rawPayload(req);
+  const digest = crypto.createHmac('sha256', secret).update(message).digest();
+  const candidate = supplied.replace(/^sha256=/i, '');
+  const expectedHex = digest.toString('hex');
+  const expectedBase64 = digest.toString('base64');
+  const a = Buffer.from(candidate, candidate.length === expectedBase64.length ? 'base64' : 'hex');
+  const b = Buffer.from(expectedHex, 'hex');
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
 
 export const webhookController = async (req: Request, res: Response) => {
   try {
-    const signature = req.headers['x-monime-signature'];
-    
-    // In production, verify the webhook signature here to ensure it came from Monime
-    // if (!verifySignature(req.body, signature, process.env.MONIME_WEBHOOK_SECRET)) {
-    //   return res.status(401).send('Unauthorized');
-    // }
+    if (!verifySignature(req)) return res.status(401).json({ error: 'Invalid webhook signature' });
+    const payload = req.body as Record<string, any>;
+    const eventType = typeof payload.event === 'string' ? payload.event : 'UNKNOWN';
+    const eventKey = String(payload.id ?? payload.eventId ?? crypto.createHash('sha256').update(rawPayload(req)).digest('hex'));
+    const id = crypto.createHash('sha256').update(`monime:${eventKey}`).digest('hex');
 
-    const payload = req.body;
-    const eventType = payload.event;
-    
-    // 1. Persist exactly as received for auditing/retries
-    const event = await prisma.webhookEvent.create({
-      data: {
-        provider: 'monime',
-        eventType: eventType || 'UNKNOWN',
-        payload: payload,
-        status: 'PENDING'
-      }
-    });
+    const existing = await prisma.webhookEvent.findUnique({ where: { id } });
+    if (existing) return res.status(200).json({ received: true, duplicate: true });
 
-    // 2. Dispatch to an asynchronous queue processor (e.g. BullMQ)
-    // Here we'll simulate the processor handling
-    setImmediate(async () => {
-      try {
-        if (eventType === 'payment.successful') {
-          // Update the payment intent
-          const intent = await prisma.paymentIntent.findUnique({
-            where: { reference: payload.data.reference }
-          });
-          if (intent && intent.status !== 'SUCCESS') {
-            await prisma.paymentIntent.update({
-              where: { id: intent.id },
-              data: { status: 'SUCCESS' }
-            });
-            
-            // Queue ledger posting & wallet top-up logic here ...
-          }
-        }
-
-        // Mark as processed
-        await prisma.webhookEvent.update({
-          where: { id: event.id },
-          data: { status: 'PROCESSED', processedAt: new Date() }
-        });
-      } catch (err: any) {
-        await prisma.webhookEvent.update({
-          where: { id: event.id },
-          data: { status: 'FAILED', error: err.message }
-        });
-      }
-    });
-
-    res.status(200).json({ received: true });
+    const event = await prisma.webhookEvent.create({ data: { id, provider: 'monime', eventType, payload, status: 'PENDING' } });
+    await QueueService.enqueueWebhook({ webhookEventId: event.id });
+    return res.status(200).json({ received: true });
   } catch (error) {
-    console.error('Webhook Error:', error);
-    res.status(500).json({ error: 'Webhook processing failed' });
+    console.error('Webhook ingestion error:', error);
+    return res.status(500).json({ error: 'Webhook ingestion failed' });
   }
 };

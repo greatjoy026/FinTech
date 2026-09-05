@@ -1,12 +1,12 @@
 import { Queue, Worker, QueueEvents } from 'bullmq';
 import { RealtimeGateway } from '../realtime/socket.gateway';
+import { prisma } from '../db/prisma';
 
 const connection = {
   host: process.env.REDIS_HOST || '127.0.0.1',
-  port: parseInt(process.env.REDIS_PORT || '6379'),
+  port: parseInt(process.env.REDIS_PORT || '6379', 10),
   password: process.env.REDIS_PASSWORD
 };
-
 const ENABLE_REDIS = process.env.ENABLE_REDIS === 'true';
 
 export class QueueService {
@@ -15,58 +15,46 @@ export class QueueService {
 
   static initializeProcessors() {
     if (!ENABLE_REDIS) {
-      console.log('[Queue] Redis disabled, mocking processors');
+      console.warn('[Queue] Redis disabled; webhook processing is fail-closed and will not be simulated');
       return;
     }
-
     this.webhookQueue = new Queue('webhookProcessing', { connection });
     this.payoutQueue = new Queue('payoutProcessing', { connection });
 
-    // 1. Webhook Processor
     new Worker('webhookProcessing', async job => {
-      console.log(`[Queue] Processing webhook ${job.id}`);
-      // Simulate heavy lifting, posting ledger entries, Monime validation
-      
-      // If error thrown, BullMQ handles retry / dead-letter
+      const eventId = String(job.data.webhookEventId);
+      const event = await prisma.webhookEvent.findUnique({ where: { id: eventId } });
+      if (!event) throw new Error(`Webhook event ${eventId} not found`);
+      await prisma.webhookEvent.update({ where: { id: eventId }, data: { attempts: { increment: 1 } } });
+
+      try {
+        // Domain-specific payment/ledger effects belong in the payment domain.
+        // This worker deliberately does not mutate financial state until those
+        // authoritative services are implemented and transactionally verified.
+        await prisma.webhookEvent.update({ where: { id: eventId }, data: { status: 'PROCESSED', processedAt: new Date(), error: null } });
+      } catch (error) {
+        await prisma.webhookEvent.update({ where: { id: eventId }, data: { status: 'FAILED', error: error instanceof Error ? error.message : String(error) } });
+        throw error;
+      }
     }, { connection });
 
-    // 2. Payout Processor
     new Worker('payoutProcessing', async job => {
-      console.log(`[Queue] Processing payout ${job.id}`);
-      // Execute monime payout API
-      // Transfer ledger funds to settlements
+      console.warn(`[Queue] Payout job ${job.id} received; provider execution remains disabled until payment infrastructure is production-ready`);
+      throw new Error('Payout processor is not enabled for real-money execution');
     }, { connection });
 
-    // 3. Global Queue Events for Realtime Dashboard Sync
     const webhookEvents = new QueueEvents('webhookProcessing', { connection });
-    webhookEvents.on('completed', ({ jobId }) => {
-      RealtimeGateway.broadcastAdminEvent('queue:job_completed', { queue: 'webhookProcessing', jobId });
-    });
-
-    webhookEvents.on('failed', ({ jobId, failedReason }) => {
-      RealtimeGateway.broadcastAdminEvent('queue:job_failed', { queue: 'webhookProcessing', jobId, reason: failedReason });
-    });
+    webhookEvents.on('completed', ({ jobId }) => RealtimeGateway.broadcastAdminEvent('queue:job_completed', { queue: 'webhookProcessing', jobId }));
+    webhookEvents.on('failed', ({ jobId, failedReason }) => RealtimeGateway.broadcastAdminEvent('queue:job_failed', { queue: 'webhookProcessing', jobId, reason: failedReason }));
   }
 
-  static async enqueueWebhook(payload: any) {
-    if (!ENABLE_REDIS || !this.webhookQueue) {
-      console.log('[Queue] Mock enqueueWebhook', payload);
-      return { id: `mock-${Date.now()}` };
-    }
-    return await this.webhookQueue.add('process_webhook', payload, {
-      attempts: 5,
-      backoff: { type: 'exponential', delay: 2000 }
-    });
+  static async enqueueWebhook(payload: { webhookEventId: string }) {
+    if (!ENABLE_REDIS || !this.webhookQueue) throw new Error('Durable webhook queue is unavailable');
+    return this.webhookQueue.add('process_webhook', payload, { jobId: payload.webhookEventId, attempts: 5, backoff: { type: 'exponential', delay: 2000 }, removeOnComplete: 1000, removeOnFail: 5000 });
   }
 
   static async enqueuePayout(payload: any) {
-    if (!ENABLE_REDIS || !this.payoutQueue) {
-      console.log('[Queue] Mock enqueuePayout', payload);
-      return { id: `mock-${Date.now()}` };
-    }
-    return await this.payoutQueue.add('execute_payout', payload, {
-      attempts: 3,
-      backoff: { type: 'exponential', delay: 5000 }
-    });
+    if (!ENABLE_REDIS || !this.payoutQueue) throw new Error('Durable payout queue is unavailable');
+    return this.payoutQueue.add('execute_payout', payload, { attempts: 3, backoff: { type: 'exponential', delay: 5000 } });
   }
 }
