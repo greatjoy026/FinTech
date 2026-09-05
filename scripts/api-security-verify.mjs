@@ -14,7 +14,7 @@ const checks = [
   ['CORS is allow-listed', /origin:\s*\(origin,\s*callback\)/.test(server) && /env\.allowedOrigins\.includes\(origin\)/.test(server)],
   ['No wildcard CORS', !/origin:\s*['"]\*['"]/.test(server)],
   ['Trusted origins are configured', /allowedOrigins:\s*configuredOrigins\(\)/.test(env)],
-  ['Production requires APP_URL', /if \(isProduction\) throw new Error\('\[Config\] APP_URL is required in production'\)/.test(env)],
+  ['Production requires APP_URL', /const value = requiredValue\('APP_URL'\)/.test(env) && /function configuredOrigins/.test(env)],
   ['Request correlation ID generated', /crypto\.randomUUID\(\)/.test(middleware)],
   ['Request ID response header emitted', /res\.setHeader\(REQUEST_ID_HEADER, requestId\)/.test(middleware)],
   ['Request ID input constrained', /REQUEST_ID_PATTERN/.test(middleware)],
