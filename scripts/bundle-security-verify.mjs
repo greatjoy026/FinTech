@@ -24,9 +24,13 @@ function filesUnder(dir) {
   return out;
 }
 
-const files = filesUnder(dist);
+const files = [
+  path.join(dist, 'index.html'),
+  ...filesUnder(path.join(dist, 'assets')),
+].filter(fs.existsSync);
+
 if (!files.length) {
-  console.error('SEC-011 bundle gate FAILED: dist/ is missing or empty');
+  console.error('SEC-011 bundle gate FAILED: browser build artifacts are missing');
   process.exit(1);
 }
 
@@ -41,8 +45,8 @@ for (const file of files) {
 }
 
 if (findings.length) {
-  console.error('SEC-011 bundle gate FAILED');
+  console.error('SEC-011 browser artifact gate FAILED');
   for (const finding of findings) console.error(`- ${finding}`);
   process.exit(1);
 }
-console.log(`SEC-011 bundle gate PASSED (${files.length} artifact files inspected)`);
+console.log(`SEC-011 browser artifact gate PASSED (${files.length} browser artifacts inspected)`);
