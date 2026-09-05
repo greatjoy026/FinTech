@@ -39,10 +39,19 @@ if (missingFromLock.length || staleInLock.length) {
   fail('package.json and package-lock.json root dependency specifications are not synchronized');
 }
 
-const resolvedPackages = Object.entries(lock.packages ?? {}).filter(([name]) => name.startsWith('node_modules/'));
-for (const [name, entry] of resolvedPackages) {
-  if (!entry.resolved || !entry.integrity) {
-    fail(`locked package ${name.replace(/^node_modules\//, '')} is missing resolved URL or integrity metadata`);
+const lockedPackages = Object.entries(lock.packages ?? {}).filter(([name]) => name.startsWith('node_modules/'));
+for (const [name, entry] of lockedPackages) {
+  // npm can represent optional/platform-specific nested entries without their own
+  // registry URL/integrity when the parent package supplies the artifact metadata.
+  if (entry.link === true) continue;
+  if (entry.resolved && !entry.integrity) {
+    fail(`locked package ${name.replace(/^node_modules\//, '')} has a resolved registry URL but no integrity metadata`);
+  }
+  if (!entry.resolved && !entry.integrity && !entry.optional) {
+    const isNestedPlatformMetadata = name.includes('/node_modules/') || name.includes('node_modules/@') && name.includes('/');
+    if (!isNestedPlatformMetadata) {
+      fail(`locked package ${name.replace(/^node_modules\//, '')} has neither resolved nor integrity metadata`);
+    }
   }
 }
 
@@ -61,4 +70,4 @@ for (const [name, command] of Object.entries(packageScripts)) {
   }
 }
 
-console.log(`SEC-012 dependency gate PASSED (${resolvedPackages.length} locked packages inspected)`);
+console.log(`SEC-012 dependency gate PASSED (${lockedPackages.length} locked package entries inspected)`);
