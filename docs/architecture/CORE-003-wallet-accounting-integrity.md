@@ -63,3 +63,7 @@ A `DIVERGED` wallet must not be silently repaired by editing balances. Operators
 ## Scope boundary
 
 CORE-003 does not implement external payment-provider/Monime integration, settlement, product, or inventory changes. Provider integration remains deferred by project decision.
+
+## Promotion and verification
+
+The CORE-003 implementation must be promoted only after the complete CORE-001, CORE-002, and CORE-003 security, invariant, type-check, build, dependency, configuration, and artifact gates pass against the exact promotion head.
