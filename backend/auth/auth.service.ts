@@ -75,7 +75,7 @@ export class AuthService {
     return this.generateTokens(userId, role);
   }
 
-  static async generateTokens(userId: string, role: string, familyId = crypto.randomUUID()) {
+  static async generateTokens(userId: string, role: string, familyId: string = crypto.randomUUID()) {
     const accessToken = jwt.sign({ userId, role }, env.jwtSecret, {
       expiresIn: '15m',
       algorithm: 'HS256',
