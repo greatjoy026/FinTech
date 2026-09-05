@@ -29,7 +29,7 @@
     "access-control:security:verify": "node scripts/access-control-security-verify.mjs",
     "governance:security:verify": "node scripts/governance-security-verify.mjs",
     "architecture-closure:security:verify": "node scripts/architecture-closure-security-verify.mjs",
-    "accounting:security:verify": "node scripts/accounting-security-verify.mjs",
+    "accounting:security:verify": "node scripts/accounting-security-verify.mjs && tsx scripts/accounting-invariants-verify.ts",
     "postinstall": "prisma generate"
   },
   "dependencies": {
