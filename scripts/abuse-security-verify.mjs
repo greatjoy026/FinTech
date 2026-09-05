@@ -22,7 +22,7 @@ const checks = [
   ['Admin route limited', /abuseRateLimit\(\{ scope: 'admin-only'/.test(server)],
   ['Health check excluded', !/api\/health[^\n]*abuseRateLimit/.test(server)],
   ['Authentication limits remain separate', !/authRouter.*abuseRateLimit/.test(server)],
-  ['Redis production configuration remains mandatory', /function requireRedisConfig/.test(env) && /REDIS_HOST is required in production/.test(env)],
+  ['Redis production configuration remains mandatory', /function requireRedisConfig/.test(env) && /requiredValue\('REDIS_HOST'\)/.test(env) && /requiredValue\('REDIS_PORT'\)/.test(env)],
   ['Abuse verification script registered', pkg.scripts?.['abuse:security:verify'] === 'node scripts/abuse-security-verify.mjs'],
 ];
 
