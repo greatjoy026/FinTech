@@ -1,0 +1,29 @@
+services:
+  fintech-api:
+    image: ${FINTECH_IMAGE:?FINTECH_IMAGE must be set to an immutable image reference}
+    restart: unless-stopped
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 256
+    mem_limit: 768m
+    cpus: 1.0
+    stop_grace_period: 20s
+    ports:
+      - "127.0.0.1:${FINTECH_HOST_PORT:-3000}:3000"
+    env_file:
+      - ${FINTECH_ENV_FILE:?FINTECH_ENV_FILE must point to an operator-managed environment file outside the repository}
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3

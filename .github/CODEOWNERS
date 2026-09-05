@@ -1,0 +1,8 @@
+# Security-sensitive code requires explicit owner review when CODEOWNERS enforcement is enabled.
+/backend/auth/ @greatjoy026
+/backend/config/ @greatjoy026
+/backend/audit/ @greatjoy026
+/backend/reliability/ @greatjoy026
+/.github/workflows/ @greatjoy026
+/deploy/ @greatjoy026
+/Dockerfile @greatjoy026

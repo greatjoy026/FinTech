@@ -1,5 +1,5 @@
 import { prisma } from '../db/prisma';
-import { AuditService } from '../audit/audit.service';
+import { AuditService } from '../../../backend/audit/audit.service';
 import { RealtimeGateway } from '../realtime/socket.gateway';
 
 export class ApprovalWorkflowEngine {

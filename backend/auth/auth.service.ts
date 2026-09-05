@@ -1,150 +1,142 @@
-import { db, handleFirestoreError, OperationType } from '../firebase';
-import { collection, query, where, getDocs, setDoc, doc, deleteDoc, Timestamp } from 'firebase/firestore';
-import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
+import jwt from 'jsonwebtoken';
+import { FirestoreServer } from '../firestore';
 import { env } from '../config/env';
+import { AuthRateLimiter } from './auth.rate-limit';
+import { hashSecret, isRefreshable, isReplay, nextOtpAttempt, otpMatches } from './auth.security';
 
-function hashOtp(code: string): string {
-  return crypto.createHash('sha256').update(code, 'utf8').digest('hex');
-}
+const OTP_TTL_MS = 5 * 60 * 1000;
+const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const GENERIC_AUTH_ERROR = 'Authentication failed';
 
 function secureOtp(): string {
   return crypto.randomInt(100000, 1000000).toString();
 }
 
-function otpMatches(storedHash: string, suppliedCode: string): boolean {
-  const suppliedHash = Buffer.from(hashOtp(suppliedCode), 'utf8');
-  const expectedHash = Buffer.from(storedHash, 'utf8');
-  return suppliedHash.length === expectedHash.length && crypto.timingSafeEqual(suppliedHash, expectedHash);
+function genericAuthError(): Error {
+  return new Error(GENERIC_AUTH_ERROR);
 }
 
 export class AuthService {
-  static async requestOtp(phoneNumber: string) {
+  static async requestOtp(phoneNumber: string, clientIp = 'unknown') {
+    const phoneAllowed = await AuthRateLimiter.allow('otp-phone', phoneNumber, 3, 15 * 60);
+    const ipAllowed = await AuthRateLimiter.allow('otp-ip', clientIp, 10, 60 * 60);
+    if (!phoneAllowed || !ipAllowed) throw genericAuthError();
+
     const code = env.authDevOtp ?? secureOtp();
-    const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
-    const newId = crypto.randomUUID();
-    const otpRef = doc(db, 'otp_codes', newId);
-
-    try {
-      await setDoc(otpRef, {
-        phoneNumber,
-        codeHash: hashOtp(code),
-        expiresAt: Timestamp.fromDate(expiresAt),
-        createdAt: Timestamp.now()
-      });
-    } catch (e) {
-      handleFirestoreError(e, OperationType.CREATE, 'otp_codes');
-    }
-
+    await FirestoreServer.set('otp_codes', crypto.randomUUID(), {
+      phoneNumber,
+      codeHash: hashSecret(code),
+      attempts: 0,
+      expiresAt: new Date(Date.now() + OTP_TTL_MS),
+      createdAt: new Date(),
+    });
     return { message: 'OTP sent successfully' };
   }
 
-  // Authentication establishes identity only. Authorization roles are resolved
-  // from trusted server-side user data and are never supplied by the caller.
-  static async verifyOtpAndLogin(phoneNumber: string, code: string) {
-    let otpRecord: any = null;
-    let otpId = '';
+  static async verifyOtpAndLogin(phoneNumber: string, code: string, clientIp = 'unknown') {
+    const allowed = await AuthRateLimiter.allow('otp-verify-phone', phoneNumber, 5, 10 * 60);
+    const ipAllowed = await AuthRateLimiter.allow('otp-verify-ip', clientIp, 20, 10 * 60);
+    if (!allowed || !ipAllowed) throw genericAuthError();
 
-    try {
-      const q = query(collection(db, 'otp_codes'), where('phoneNumber', '==', phoneNumber));
-      const snapshot = await getDocs(q);
-      const validOtp = snapshot.docs.find(d => {
-        const data = d.data();
-        const expiresAt = data.expiresAt?.toDate?.();
-        return Boolean(expiresAt) && expiresAt > new Date() && typeof data.codeHash === 'string' && otpMatches(data.codeHash, code);
-      });
+    const records = await FirestoreServer.findByField('otp_codes', 'phoneNumber', phoneNumber);
+    const candidates = records
+      .filter(record => new Date(record.data.expiresAt).getTime() > Date.now())
+      .sort((a, b) => new Date(b.data.createdAt).getTime() - new Date(a.data.createdAt).getTime());
+    const current = candidates[0];
+    if (!current) throw genericAuthError();
 
-      if (validOtp) {
-        otpRecord = validOtp.data();
-        otpId = validOtp.id;
-      }
-    } catch (e) {
-      handleFirestoreError(e, OperationType.LIST, 'otp_codes');
+    const attempts = Number(current.data.attempts ?? 0);
+    if (attempts >= 5) {
+      await FirestoreServer.delete('otp_codes', current.id);
+      throw genericAuthError();
     }
 
-    if (!otpRecord) throw new Error('Invalid or expired OTP');
-
-    try { await deleteDoc(doc(db, 'otp_codes', otpId)); } catch (e) {}
-
-    let user: any = null;
-    let userId = '';
-
-    try {
-      const uq = query(collection(db, 'users'), where('phoneNumber', '==', phoneNumber));
-      const uSnap = await getDocs(uq);
-      if (!uSnap.empty) {
-        userId = uSnap.docs[0].id;
-        user = uSnap.docs[0].data();
-      } else {
-        userId = crypto.randomUUID();
-        user = { phoneNumber, role: 'CUSTOMER', createdAt: Timestamp.now() };
-        await setDoc(doc(db, 'users', userId), user);
-      }
-    } catch (e) {
-      handleFirestoreError(e, OperationType.WRITE, 'users');
+    if (typeof current.data.codeHash !== 'string' || !otpMatches(current.data.codeHash, code)) {
+      const result = nextOtpAttempt(attempts);
+      if (!result.allowed) await FirestoreServer.delete('otp_codes', current.id);
+      else await FirestoreServer.set('otp_codes', current.id, { attempts: result.nextAttempts });
+      throw genericAuthError();
     }
 
-    return await this.generateTokens(userId, user.role);
+    await FirestoreServer.delete('otp_codes', current.id);
+
+    const users = await FirestoreServer.findByField('users', 'phoneNumber', phoneNumber);
+    let userId: string;
+    let role: string;
+    if (users.length) {
+      userId = users[0].id;
+      role = String(users[0].data.role ?? 'CUSTOMER');
+    } else {
+      userId = crypto.randomUUID();
+      role = 'CUSTOMER';
+      await FirestoreServer.set('users', userId, { phoneNumber, role, createdAt: new Date() });
+    }
+    return this.generateTokens(userId, role);
   }
 
-  static async generateTokens(userId: string, role: string) {
-    const accessToken = jwt.sign({ userId, role }, env.jwtSecret, { expiresIn: '15m' });
-    const refreshTokenBase = crypto.randomBytes(40).toString('hex');
-    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-    const sessionId = crypto.randomUUID();
+  static async generateTokens(userId: string, role: string, familyId: string = crypto.randomUUID()) {
+    const accessToken = jwt.sign({ userId, role }, env.jwtSecret, {
+      expiresIn: '15m',
+      algorithm: 'HS256',
+      issuer: 'fintech-auth',
+      audience: 'fintech-api',
+    });
+    const refreshToken = crypto.randomBytes(40).toString('hex');
+    await FirestoreServer.set('sessions', crypto.randomUUID(), {
+      userId,
+      familyId,
+      refreshTokenHash: hashSecret(refreshToken),
+      status: 'ACTIVE',
+      expiresAt: new Date(Date.now() + SESSION_TTL_MS),
+      createdAt: new Date(),
+    });
+    return { accessToken, refreshToken, userId, role };
+  }
 
-    try {
-      await setDoc(doc(db, 'sessions', sessionId), {
-        userId,
-        refreshToken: refreshTokenBase,
-        expiresAt: Timestamp.fromDate(expiresAt),
-        createdAt: Timestamp.now()
-      });
-    } catch (e) {
-      handleFirestoreError(e, OperationType.CREATE, 'sessions');
-    }
-
-    return { accessToken, refreshToken: refreshTokenBase, userId, role };
+  static async revokeFamily(familyId: string) {
+    const sessions = await FirestoreServer.findByField('sessions', 'familyId', familyId);
+    await Promise.all(sessions.map(session => FirestoreServer.set('sessions', session.id, {
+      status: 'REVOKED',
+      revokedAt: new Date(),
+    })));
   }
 
   static async refresh(refreshToken: string) {
-    let session: any = null;
-    let sessionId = '';
+    const tokenHash = hashSecret(refreshToken);
+    return AuthRateLimiter.withRefreshLock(tokenHash, async () => {
+      const sessions = await FirestoreServer.findByField('sessions', 'refreshTokenHash', tokenHash);
+      const session = sessions[0];
+      if (!session) throw genericAuthError();
 
-    try {
-      const q = query(collection(db, 'sessions'), where('refreshToken', '==', refreshToken));
-      const snapshot = await getDocs(q);
-      if (!snapshot.empty) {
-        sessionId = snapshot.docs[0].id;
-        session = snapshot.docs[0].data();
+      const expiresAt = new Date(session.data.expiresAt).getTime();
+      const status = String(session.data.status ?? 'ACTIVE');
+      if (!isRefreshable(status, expiresAt)) {
+        if (isReplay(status)) {
+          const familyId = String(session.data.familyId ?? '');
+          if (familyId) await this.revokeFamily(familyId);
+        } else {
+          await FirestoreServer.set('sessions', session.id, { status: 'REVOKED', revokedAt: new Date() });
+        }
+        throw genericAuthError();
       }
-    } catch (e) {
-      handleFirestoreError(e, OperationType.LIST, 'sessions');
-    }
 
-    if (!session || session.expiresAt.toDate() < new Date()) {
-      if (sessionId) try { await deleteDoc(doc(db, 'sessions', sessionId)); } catch (e) {}
-      throw new Error('Invalid or expired refresh token');
-    }
+      const userId = String(session.data.userId);
+      const user = await FirestoreServer.get('users', userId);
+      const role = String(user.data.role ?? 'CUSTOMER');
+      const familyId = String(session.data.familyId);
 
-    let role = 'CUSTOMER';
-    try {
-      const uq = query(collection(db, 'users'), where('__name__', '==', session.userId));
-      const usnap = await getDocs(uq);
-      if (!usnap.empty) role = usnap.docs[0].data().role;
-    } catch (e) {}
-
-    try { await deleteDoc(doc(db, 'sessions', sessionId)); } catch (e) {}
-    return await this.generateTokens(session.userId, role);
+      await FirestoreServer.set('sessions', session.id, { status: 'ROTATED', rotatedAt: new Date() });
+      return this.generateTokens(userId, role, familyId);
+    });
   }
 
   static async logout(refreshToken: string) {
-    try {
-      const q = query(collection(db, 'sessions'), where('refreshToken', '==', refreshToken));
-      const snapshot = await getDocs(q);
-      for (const d of snapshot.docs) await deleteDoc(d.ref);
-    } catch (e) {
-      handleFirestoreError(e, OperationType.LIST, 'sessions');
-    }
+    const tokenHash = hashSecret(refreshToken);
+    const sessions = await FirestoreServer.findByField('sessions', 'refreshTokenHash', tokenHash);
+    await Promise.all(sessions.map(session => FirestoreServer.set('sessions', session.id, {
+      status: 'REVOKED',
+      revokedAt: new Date(),
+    })));
   }
 }
