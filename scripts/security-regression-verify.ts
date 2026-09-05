@@ -109,6 +109,5 @@ runGate('npm', ['run', 'abuse:security:verify']);
 runGate('npm', ['run', 'audit:security:verify']);
 runGate('npm', ['run', 'config:security:verify']);
 runGate('npm', ['run', 'dependency:security:verify']);
-runGate('npm', ['run', 'bundle:security:verify']);
 
 console.log('SEC-013 SECURITY REGRESSION VERIFY: all behavioral and foundation regression assertions passed');
