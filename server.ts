@@ -6,6 +6,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import { authRouter } from './backend/auth/auth.controller';
 import { authenticate, requireAdmin, type AuthRequest } from './backend/auth/auth.middleware';
+import { requirePrivilegedOperation } from './backend/auth/privileged-operations';
 import { env } from './backend/config/env';
 import { abuseRateLimit } from './backend/http/abuse-rate-limit';
 import { requestIdMiddleware, securityMethodGuard, errorHandler, notFoundHandler } from './backend/http/security.middleware';
@@ -48,9 +49,9 @@ async function startServer() {
 
   app.get('/api/health', liveness);
   app.get('/api/ready', readiness);
-  app.get('/api/metrics', authenticate, requireAdmin, (_req, res) => res.type('text/plain; version=0.0.4').send(prometheusMetrics()));
+  app.get('/api/metrics', authenticate, requireAdmin, requirePrivilegedOperation('PRODUCTION_ACCESS'), (_req, res) => res.type('text/plain; version=0.0.4').send(prometheusMetrics()));
   app.get('/api/protected', authenticate, abuseRateLimit({ scope: 'protected', limit: 120, windowSeconds: 60 }), (req: AuthRequest, res) => res.json({ message: 'Success', user: req.user }));
-  app.get('/api/admin-only', authenticate, requireAdmin, abuseRateLimit({ scope: 'admin-only', limit: 60, windowSeconds: 60 }), async (req: AuthRequest, res, next) => {
+  app.get('/api/admin-only', authenticate, requireAdmin, requirePrivilegedOperation('PRODUCTION_ACCESS'), abuseRateLimit({ scope: 'admin-only', limit: 60, windowSeconds: 60 }), async (req: AuthRequest, res, next) => {
     try {
       if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
       await AuditService.record({ actorId: req.user.userId, role: req.user.role, action: 'ADMIN_API_ACCESS', resource: 'ADMIN_API', resourceId: req.path, outcome: 'SUCCESS', requestId: String(req.headers['x-request-id'] ?? ''), ipAddress: req.ip, device: String(req.headers['user-agent'] ?? '').slice(0, 512) || undefined });
