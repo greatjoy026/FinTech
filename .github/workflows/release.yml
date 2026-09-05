@@ -1,0 +1,103 @@
+name: Production Release Candidate
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+
+concurrency:
+  group: production-release
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  verify:
+    name: Verify release
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout immutable tag
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.ref }}
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Generate Prisma client
+        run: npx prisma generate
+      - name: SEC-017 release governance gate
+        run: npm run release:security:verify
+      - name: Full CORE-001 security gate
+        run: npm run security:verify
+      - name: TypeScript gate
+        run: npm run lint
+      - name: Production build
+        run: npm run build
+      - name: Validate migration history
+        run: npx prisma migrate status
+
+  image:
+    name: Build immutable release image
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout immutable tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Extract image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=sha
+            type=raw,value=${{ github.ref_name }}
+      - name: Build and push image
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          provenance: true
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+      - name: Publish release manifest
+        run: |
+          printf '%s\n' \
+            "release=${{ github.ref_name }}" \
+            "commit=${{ github.sha }}" \
+            "image=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}" \
+            "source=${{ github.server_url }}/${{ github.repository }}/tree/${{ github.sha }}" \
+            > release-manifest.txt
+      - name: Upload release manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-manifest-${{ github.ref_name }}
+          path: release-manifest.txt
+          if-no-files-found: error
