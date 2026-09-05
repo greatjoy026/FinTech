@@ -16,7 +16,7 @@ const assertions = [
   ['Refresh token is hashed', /refreshTokenHash: hashSecret\(refreshToken\)/],
   ['Webhook signature required', /Invalid webhook signature/],
   ['Webhook HMAC', /createHmac\(['\"]sha256/],
-  ['Webhook enqueued durably', /enqueueWebhook\(\{ webhookEventId: event\.id \}\)/],
+  ['Webhook enqueued durably', /enqueueWebhook\(\{\s*webhookEventId:\s*(?:event|storedEvent|existing)\.id\s*\}\)/],
   ['Realtime JWT middleware', /this\.io\.use\(\(socket, next\)/],
   ['Realtime admin authorization', /user\.role !== ['\"]ADMIN['\"]/],
   ['No wildcard socket CORS', !/origin:\s*['\"]\*['\"]/.test(files.realtime)]
