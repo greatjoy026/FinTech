@@ -28,6 +28,9 @@ jobs:
       - name: Static security gate
         run: npm run security:verify
 
+      - name: Authentication security regression gate
+        run: npm run auth:security:verify
+
       - name: TypeScript gate
         run: npm run lint
 

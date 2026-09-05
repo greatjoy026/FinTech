@@ -11,6 +11,7 @@
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
     "security:verify": "node scripts/security-verify.mjs",
+    "auth:security:verify": "tsx scripts/auth-security-verify.ts",
     "postinstall": "prisma generate"
   },
   "dependencies": {
