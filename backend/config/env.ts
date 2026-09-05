@@ -1,3 +1,5 @@
+import 'dotenv/config';
+
 const isProduction = process.env.NODE_ENV === 'production';
 
 function requiredSecret(name: string, minimumLength: number): string {
