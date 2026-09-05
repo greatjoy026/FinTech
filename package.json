@@ -25,8 +25,8 @@
     "@base-ui/react": "^1.4.1",
     "@fontsource-variable/geist": "^5.2.9",
     "@google/genai": "^1.29.0",
-    "@prisma/adapter-pg": "^7.8.0",
-    "@prisma/client": "^7.8.0",
+    "@prisma/adapter-pg": "^7.10.0",
+    "@prisma/client": "^7.10.0",
     "@tailwindcss/vite": "^4.1.14",
     "@tanstack/react-table": "^8.21.1",
     "@vitejs/plugin-react": "^5.0.4",
@@ -37,7 +37,7 @@
     "cors": "^2.8.6",
     "date-fns": "^4.2.1",
     "dotenv": "^17.2.3",
-    "express": "^4.21.2",
+    "express": "^5.2.1",
     "firebase": "^12.13.0",
     "helmet": "^8.2.0",
     "ioredis": "^5.10.1",
@@ -74,5 +74,11 @@
     "typescript": "~5.8.2",
     "vite": "^6.2.3"
   },
-  "overrides": { "node-fetch": "^2.7.0" }
+  "overrides": {
+    "node-fetch": "^2.7.0",
+    "qs": "^6.16.0",
+    "mysql2": "^3.24.3",
+    "valibot": "^1.4.2",
+    "deepmerge-ts": "^8.0.0"
+  }
 }
