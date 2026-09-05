@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import Redis from 'ioredis';
+import { Redis } from 'ioredis';
 import { env } from '../config/env';
 
 const redis = new Redis({
@@ -64,7 +64,7 @@ export class AuthRateLimiter {
       return await operation();
     } finally {
       try {
-        await (redis as unknown as { eval: (...args: unknown[]) => Promise<unknown> }).eval(
+        await redis.eval(
           "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end",
           1,
           lockKey,
