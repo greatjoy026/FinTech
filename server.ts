@@ -50,22 +50,12 @@ async function startServer() {
 
   app.get('/api/health', liveness);
   app.get('/api/ready', readiness);
-  app.get('/api/metrics', (_req, res) => res.type('text/plain; version=0.0.4').send(prometheusMetrics()));
+  app.get('/api/metrics', authenticate, requireAdmin, (_req, res) => res.type('text/plain; version=0.0.4').send(prometheusMetrics()));
   app.get('/api/protected', authenticate, abuseRateLimit({ scope: 'protected', limit: 120, windowSeconds: 60 }), (req: AuthRequest, res) => res.json({ message: 'Success', user: req.user }));
   app.get('/api/admin-only', authenticate, requireAdmin, abuseRateLimit({ scope: 'admin-only', limit: 60, windowSeconds: 60 }), async (req: AuthRequest, res, next) => {
     try {
       if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
-      await AuditService.record({
-        actorId: req.user.userId,
-        role: req.user.role,
-        action: 'ADMIN_API_ACCESS',
-        resource: 'ADMIN_API',
-        resourceId: req.path,
-        outcome: 'SUCCESS',
-        requestId: String(req.headers['x-request-id'] ?? ''),
-        ipAddress: req.ip,
-        device: String(req.headers['user-agent'] ?? '').slice(0, 512) || undefined,
-      });
+      await AuditService.record({ actorId: req.user.userId, role: req.user.role, action: 'ADMIN_API_ACCESS', resource: 'ADMIN_API', resourceId: req.path, outcome: 'SUCCESS', requestId: String(req.headers['x-request-id'] ?? ''), ipAddress: req.ip, device: String(req.headers['user-agent'] ?? '').slice(0, 512) || undefined });
       return res.json({ message: 'Welcome Admin' });
     } catch (error) { return next(error); }
   });
@@ -83,7 +73,4 @@ async function startServer() {
   server.listen(PORT, '0.0.0.0', () => logger.info('SERVER_STARTED', { port: PORT }));
 }
 
-startServer().catch(error => {
-  logger.error('STARTUP_FATAL', { error: error instanceof Error ? error.message : 'unknown error' });
-  process.exit(1);
-});
+startServer().catch(error => { logger.error('STARTUP_FATAL', { error: error instanceof Error ? error.message : 'unknown error' }); process.exit(1); });
