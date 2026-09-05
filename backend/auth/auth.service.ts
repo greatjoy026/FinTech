@@ -3,24 +3,14 @@ import jwt from 'jsonwebtoken';
 import { FirestoreServer } from '../firestore';
 import { env } from '../config/env';
 import { AuthRateLimiter } from './auth.rate-limit';
+import { hashSecret, isRefreshable, isReplay, nextOtpAttempt, otpMatches } from './auth.security';
 
 const OTP_TTL_MS = 5 * 60 * 1000;
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-const OTP_MAX_ATTEMPTS = 5;
 const GENERIC_AUTH_ERROR = 'Authentication failed';
-
-function hashSecret(value: string): string {
-  return crypto.createHash('sha256').update(value, 'utf8').digest('hex');
-}
 
 function secureOtp(): string {
   return crypto.randomInt(100000, 1000000).toString();
-}
-
-function otpMatches(storedHash: string, suppliedCode: string): boolean {
-  const suppliedHash = Buffer.from(hashSecret(suppliedCode), 'utf8');
-  const expectedHash = Buffer.from(storedHash, 'utf8');
-  return suppliedHash.length === expectedHash.length && crypto.timingSafeEqual(suppliedHash, expectedHash);
 }
 
 function genericAuthError(): Error {
@@ -34,16 +24,13 @@ export class AuthService {
     if (!phoneAllowed || !ipAllowed) throw genericAuthError();
 
     const code = env.authDevOtp ?? secureOtp();
-    const now = new Date();
-    const expiresAt = new Date(Date.now() + OTP_TTL_MS);
     await FirestoreServer.set('otp_codes', crypto.randomUUID(), {
       phoneNumber,
       codeHash: hashSecret(code),
       attempts: 0,
-      expiresAt,
-      createdAt: now,
+      expiresAt: new Date(Date.now() + OTP_TTL_MS),
+      createdAt: new Date(),
     });
-
     return { message: 'OTP sent successfully' };
   }
 
@@ -57,21 +44,18 @@ export class AuthService {
       .filter(record => new Date(record.data.expiresAt).getTime() > Date.now())
       .sort((a, b) => new Date(b.data.createdAt).getTime() - new Date(a.data.createdAt).getTime());
     const current = candidates[0];
-
     if (!current) throw genericAuthError();
+
     const attempts = Number(current.data.attempts ?? 0);
-    if (attempts >= OTP_MAX_ATTEMPTS) {
+    if (attempts >= 5) {
       await FirestoreServer.delete('otp_codes', current.id);
       throw genericAuthError();
     }
 
     if (typeof current.data.codeHash !== 'string' || !otpMatches(current.data.codeHash, code)) {
-      const nextAttempts = attempts + 1;
-      if (nextAttempts >= OTP_MAX_ATTEMPTS) {
-        await FirestoreServer.delete('otp_codes', current.id);
-      } else {
-        await FirestoreServer.set('otp_codes', current.id, { attempts: nextAttempts });
-      }
+      const result = nextOtpAttempt(attempts);
+      if (!result.allowed) await FirestoreServer.delete('otp_codes', current.id);
+      else await FirestoreServer.set('otp_codes', current.id, { attempts: result.nextAttempts });
       throw genericAuthError();
     }
 
@@ -127,14 +111,13 @@ export class AuthService {
 
       const expiresAt = new Date(session.data.expiresAt).getTime();
       const status = String(session.data.status ?? 'ACTIVE');
-      if (expiresAt <= Date.now()) {
-        await FirestoreServer.set('sessions', session.id, { status: 'REVOKED', revokedAt: new Date() });
-        throw genericAuthError();
-      }
-
-      if (status !== 'ACTIVE') {
-        const familyId = String(session.data.familyId ?? '');
-        if (familyId) await this.revokeFamily(familyId);
+      if (!isRefreshable(status, expiresAt)) {
+        if (isReplay(status)) {
+          const familyId = String(session.data.familyId ?? '');
+          if (familyId) await this.revokeFamily(familyId);
+        } else {
+          await FirestoreServer.set('sessions', session.id, { status: 'REVOKED', revokedAt: new Date() });
+        }
         throw genericAuthError();
       }
 
@@ -143,10 +126,7 @@ export class AuthService {
       const role = String(user.data.role ?? 'CUSTOMER');
       const familyId = String(session.data.familyId);
 
-      await FirestoreServer.set('sessions', session.id, {
-        status: 'ROTATED',
-        rotatedAt: new Date(),
-      });
+      await FirestoreServer.set('sessions', session.id, { status: 'ROTATED', rotatedAt: new Date() });
       return this.generateTokens(userId, role, familyId);
     });
   }
