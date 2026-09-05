@@ -12,25 +12,19 @@ function verifySignature(req: Request): boolean {
   const raw = rawPayload(req);
   if (!secret || !raw) return false;
 
-  const supplied = String(req.headers['x-monime-signature'] ?? '').trim();
+  // Monime documents Monime-Signature as the webhook signature header.
+  // The exact canonical signed-message encoding must be confirmed against
+  // the provider's HMAC verification contract before this is production-approved.
+  const supplied = String(req.headers['monime-signature'] ?? '').trim();
   if (!supplied) return false;
 
-  const timestamp = String(req.headers['x-monime-timestamp'] ?? '').trim();
-  if (timestamp) {
-    const ts = Number(timestamp);
-    if (!Number.isFinite(ts) || Math.abs(Date.now() - ts * 1000) > 5 * 60 * 1000) return false;
-  }
-
-  // The provider contract must define whether the timestamp is part of the
-  // signed message. Until that contract is confirmed, verify the documented
-  // raw-body HMAC format rather than inventing a timestamp signing scheme.
-  const digest = crypto.createHmac('sha256', secret).update(raw).digest('hex');
   const candidate = supplied.replace(/^sha256=/i, '').trim();
   if (!/^[a-f0-9]{64}$/i.test(candidate)) return false;
 
-  const expected = Buffer.from(digest, 'hex');
+  const expected = crypto.createHmac('sha256', secret).update(raw).digest('hex');
   const received = Buffer.from(candidate, 'hex');
-  return crypto.timingSafeEqual(expected, received);
+  const expectedBuffer = Buffer.from(expected, 'hex');
+  return crypto.timingSafeEqual(expectedBuffer, received);
 }
 
 export const webhookController = async (req: Request, res: Response) => {
@@ -40,15 +34,16 @@ export const webhookController = async (req: Request, res: Response) => {
     const raw = rawPayload(req);
     if (!raw) return res.status(400).json({ error: 'Raw webhook body unavailable' });
 
-    const payload = req.body as Record<string, unknown>;
-    const eventType = typeof payload.event === 'string' ? payload.event : 'UNKNOWN';
-    const eventKey = String(payload.id ?? payload.eventId ?? crypto.createHash('sha256').update(raw).digest('hex'));
+    const payload = req.body as Record<string, any>;
+    const event = payload.event && typeof payload.event === 'object' ? payload.event : {};
+    const eventType = typeof event.name === 'string' ? event.name : 'UNKNOWN';
+    const eventKey = typeof event.id === 'string'
+      ? event.id
+      : crypto.createHash('sha256').update(raw).digest('hex');
     const id = crypto.createHash('sha256').update(`monime:${eventKey}`).digest('hex');
 
     const existing = await prisma.webhookEvent.findUnique({ where: { id } });
     if (existing) {
-      // A prior request may have persisted the event but failed before durable
-      // enqueue. Retry the enqueue while the event remains pending.
       if (existing.status === 'PENDING') {
         await QueueService.enqueueWebhook({ webhookEventId: existing.id });
         return res.status(200).json({ received: true, duplicate: true, requeued: true });
@@ -56,8 +51,16 @@ export const webhookController = async (req: Request, res: Response) => {
       return res.status(200).json({ received: true, duplicate: true });
     }
 
-    const event = await prisma.webhookEvent.create({ data: { id, provider: 'monime', eventType, payload, status: 'PENDING' } });
-    await QueueService.enqueueWebhook({ webhookEventId: event.id });
+    const storedEvent = await prisma.webhookEvent.create({
+      data: {
+        id,
+        provider: 'monime',
+        eventType,
+        payload,
+        status: 'PENDING'
+      }
+    });
+    await QueueService.enqueueWebhook({ webhookEventId: storedEvent.id });
     return res.status(200).json({ received: true });
   } catch (error) {
     console.error('Webhook ingestion error:', error);
