@@ -50,6 +50,14 @@ function configuredOrigins(): string[] {
   return origins;
 }
 
+function configuredTrustProxy(): false | 1 | 2 {
+  const value = process.env.TRUST_PROXY?.trim();
+  if (!value || value === 'false') return false;
+  if (value === 'true' || value === '1') return 1;
+  if (value === '2') return 2;
+  throw new Error('[Config] TRUST_PROXY must be false, true, 1, or 2');
+}
+
 export const env = {
   nodeEnv: process.env.NODE_ENV || 'development',
   jwtSecret: requiredSecret('JWT_SECRET', 32),
@@ -62,6 +70,7 @@ export const env = {
   redisPort: Number(process.env.REDIS_PORT || 6379),
   redisPassword: process.env.REDIS_PASSWORD?.trim() || undefined,
   allowedOrigins: configuredOrigins(),
+  trustProxy: configuredTrustProxy(),
 };
 
 requireDatabaseConfig();
@@ -71,3 +80,4 @@ requireRedisConfig();
 if (!Number.isInteger(env.redisPort) || env.redisPort < 1 || env.redisPort > 65535) throw new Error('[Config] REDIS_PORT must be a valid TCP port');
 if (isProduction && process.env.AUTH_DEV_OTP) throw new Error('[Config] AUTH_DEV_OTP must not be configured in production');
 if (isProduction && process.env.GEMINI_API_KEY) throw new Error('[Config] GEMINI_API_KEY is not a server configuration variable');
+if (isProduction && env.trustProxy === false) throw new Error('[Config] TRUST_PROXY must be explicitly configured in production');
