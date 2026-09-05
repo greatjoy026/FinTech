@@ -1,7 +1,7 @@
 import { Server as SocketServer } from 'socket.io';
 import { Server as HttpServer } from 'http';
 import jwt from 'jsonwebtoken';
-import { env } from '../config/env';
+import { env } from '../../../backend/config/env';
 
 interface SocketUser { userId: string; role: string }
 
