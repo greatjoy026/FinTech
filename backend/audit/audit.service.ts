@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { prisma } from '../../src/backend/db/prisma';
+import { FirestoreServer } from '../firestore';
 
 type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 export type AuditOutcome = 'SUCCESS' | 'FAILURE' | 'DENIED' | 'RATE_LIMITED';
@@ -53,6 +54,33 @@ export class AuditService {
     const metadata: Record<string, JsonValue> = { ...(safeMetadata as Record<string, JsonValue> | undefined), _actorRole: input.role };
     const material = { actorId: input.actorId, role: input.role, action: input.action, resource: input.resource, resourceId: input.resourceId ?? '', outcome: input.outcome, requestId: input.requestId, ipAddress: input.ipAddress, device: input.device, beforeState: safeBefore, afterState: safeAfter, metadata, createdAt: createdAt.toISOString() };
     return prisma.auditLog.create({ data: { actor: input.actorId, action: input.action, resource: input.resource, resourceId: input.resourceId ?? '', outcome: input.outcome, requestId: input.requestId, beforeState: safeBefore, afterState: safeAfter, metadata, integrityHash: digest(material), ipAddress: input.ipAddress, device: input.device, createdAt } });
+  }
+
+  static async logAction(input: {
+    actor: string;
+    action: string;
+    resource: string;
+    resourceId: string;
+    beforeState?: JsonValue;
+    afterState?: JsonValue;
+    ipAddress?: string;
+    device?: string;
+  }) {
+    const user = await FirestoreServer.get('users', input.actor);
+    const role = typeof user?.data?.role === 'string' ? user.data.role : '';
+    if (!role) throw new Error('Audit actor role unavailable');
+    return this.record({
+      actorId: input.actor,
+      role,
+      action: input.action,
+      resource: input.resource,
+      resourceId: input.resourceId,
+      outcome: 'SUCCESS',
+      ipAddress: input.ipAddress,
+      device: input.device,
+      beforeState: input.beforeState,
+      afterState: input.afterState,
+    });
   }
 
   static verifyIntegrity(record: {
