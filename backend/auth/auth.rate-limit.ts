@@ -48,7 +48,6 @@ export class AuthRateLimiter {
       if (count === 1) await redis.expire(redisKey, windowSeconds);
       return count <= limit;
     } catch {
-      // Authentication abuse controls fail closed in production.
       return false;
     }
   }
@@ -65,7 +64,7 @@ export class AuthRateLimiter {
       return await operation();
     } finally {
       try {
-        await redis.eval(
+        await (redis as unknown as { eval: (...args: unknown[]) => Promise<unknown> }).eval(
           "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end",
           1,
           lockKey,
