@@ -25,7 +25,6 @@ function runGate(command: string, args: string[]): void {
   }
 }
 
-// Authentication/session behavior.
 const otp = '482913';
 const otpHash = hashSecret(otp);
 assert.notEqual(otpHash, otp);
@@ -40,7 +39,6 @@ assert.equal(isReplay('ROTATED'), true);
 assert.equal(isReplay('REVOKED'), true);
 assert.equal(isReplay('ACTIVE'), false);
 
-// Authorization behavior: invalid roles and cross-user access fail closed.
 assert.equal(isRole('ADMIN'), true);
 assert.equal(isRole('CUSTOMER'), true);
 assert.equal(isRole('SUPERADMIN'), false);
@@ -52,7 +50,6 @@ assert.equal(canAccessUserResource('user-a', 'user-a'), true);
 assert.equal(canAccessUserResource('user-a', 'user-b'), false);
 assert.equal(canAccessUserResource('', 'user-b'), false);
 
-// HTTP boundary behavior using real middleware functions with minimal test doubles.
 const response = {
   headers: new Map<string, string>(),
   statusCode: 200,
@@ -63,7 +60,8 @@ const response = {
   json(body: unknown) { this.body = body; return this; },
   headersSent: false,
 };
-const request = {
+type RequestFixture = { method: string; headers: Record<string, string>; path: string; header: (name: string) => string | undefined };
+const request: RequestFixture = {
   method: 'GET',
   headers: {},
   header(name: string) { return this.headers[name.toLowerCase()]; },
@@ -76,7 +74,7 @@ assert.match(String(response.getHeader('X-Request-ID')), /^[0-9a-f-]{36}$/);
 assert.equal(typeof response.getHeader('X-Request-ID'), 'string');
 
 const invalidIdResponse = { ...response, headers: new Map<string, string>(), statusCode: 200, body: undefined };
-const invalidIdRequest = {
+const invalidIdRequest: RequestFixture = {
   ...request,
   headers: { 'x-request-id': 'bad id with spaces' },
   header(name: string) { return this.headers[name.toLowerCase()]; },
@@ -104,8 +102,6 @@ assert.equal(JSON.stringify(errorResponse.body).includes('secret database detail
 assert.equal(hasWildcardOrigin({ origin: '*' }), true);
 assert.equal(hasWildcardOrigin({ origin: 'https://trusted.example' }), false);
 
-// Run the established security gates as part of the regression suite so a behavioral
-// regression cannot bypass an existing foundation control.
 runGate('npm', ['run', 'auth:security:verify']);
 runGate('npm', ['run', 'authorization:security:verify']);
 runGate('npm', ['run', 'api:security:verify']);
