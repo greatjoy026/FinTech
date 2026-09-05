@@ -30,7 +30,6 @@ export class RealtimeGateway {
     this.io.on('connection', socket => {
       const user = socket.data.user as SocketUser;
       socket.join(`user-${user.userId}`);
-
       socket.on('subscribe:admin', () => {
         if (user.role !== 'ADMIN') {
           socket.emit('system:error', { error: 'Forbidden' });
@@ -39,11 +38,14 @@ export class RealtimeGateway {
         socket.join('admin-room');
         socket.emit('system', { message: 'Subscribed to admin broadcasts' });
       });
-
-      socket.on('disconnect', () => console.log(`[Realtime] Client disconnected: ${socket.id}`));
     });
   }
 
   static broadcastAdminEvent(event: string, payload: unknown) { this.io?.to('admin-room').emit(`admin:${event}`, payload); }
   static broadcastUserEvent(userId: string, event: string, payload: unknown) { this.io?.to(`user-${userId}`).emit(`user:${event}`, payload); }
+  static async shutdown(): Promise<void> {
+    if (!this.io) return;
+    await new Promise<void>(resolve => this.io.close(() => resolve()));
+    this.io = undefined as unknown as SocketServer;
+  }
 }
