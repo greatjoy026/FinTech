@@ -28,7 +28,7 @@ const REF_RE = /^[A-Za-z0-9._:-]{8,128}$/;
 function normalize(input: PostJournalInput) {
   if (!REF_RE.test(input.reference)) throw new FinancialDomainError('INVALID_REFERENCE', 'Invalid financial reference');
   if (!KEY_RE.test(input.idempotencyKey)) throw new FinancialDomainError('INVALID_IDEMPOTENCY_KEY', 'Invalid idempotency key');
-  if (!CURRENCY_RE.test(input.currency)) throw new FinancialDomainError('INVALID_CURRENCY', 'Invalid currency');
+  if (!CURRENCY_RE.test(input.currency.toUpperCase())) throw new FinancialDomainError('INVALID_CURRENCY', 'Invalid currency');
   if (!input.description.trim() || !input.source.trim()) throw new FinancialDomainError('INVALID_JOURNAL', 'Invalid journal metadata');
   if (input.lines.length < 2) throw new FinancialDomainError('INVALID_JOURNAL', 'A journal requires at least two lines');
 
@@ -73,68 +73,93 @@ function requestHash(input: ReturnType<typeof normalize>): string {
   return crypto.createHash('sha256').update(canonical).digest('hex');
 }
 
+function isRetryableSerialization(error: unknown): boolean {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034';
+}
+
 export class AccountingService {
   static async postJournal(input: PostJournalInput) {
     const normalized = normalize(input);
     const hash = requestHash(normalized);
 
-    return prisma.$transaction(async (tx) => {
-      const existing = await tx.financialJournal.findUnique({
-        where: { idempotencyKey: normalized.idempotencyKey },
-        include: { lines: true },
-      });
-      if (existing) {
-        if (existing.requestHash !== hash) {
-          throw new FinancialDomainError('IDEMPOTENCY_CONFLICT', 'Idempotency key was already used for a different financial request', 409);
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        return await prisma.$transaction(async (tx) => {
+          const existing = await tx.financialJournal.findUnique({
+            where: { idempotencyKey: normalized.idempotencyKey },
+            include: { lines: true },
+          });
+          if (existing) {
+            if (existing.requestHash !== hash) {
+              throw new FinancialDomainError('IDEMPOTENCY_CONFLICT', 'Idempotency key was already used for a different financial request', 409);
+            }
+            return existing;
+          }
+
+          const accounts = await tx.financialAccount.findMany({
+            where: { id: { in: normalized.lines.map((line) => line.accountId) } },
+            select: { id: true, currency: true, status: true },
+          });
+          const byId = new Map(accounts.map((account) => [account.id, account]));
+          for (const line of normalized.lines) {
+            const account = byId.get(line.accountId);
+            if (!account) throw new FinancialDomainError('ACCOUNT_NOT_FOUND', 'Financial account not found', 404);
+            if (account.status !== 'ACTIVE') throw new FinancialDomainError('ACCOUNT_DISABLED', 'Financial account is disabled');
+            if (account.currency !== normalized.currency) throw new FinancialDomainError('ACCOUNT_CURRENCY_MISMATCH', 'Financial account currency does not match journal currency');
+          }
+
+          const journal = await tx.financialJournal.create({
+            data: {
+              reference: normalized.reference,
+              description: normalized.description,
+              currency: normalized.currency,
+              status: 'DRAFT',
+              idempotencyKey: normalized.idempotencyKey,
+              requestHash: hash,
+              source: normalized.source,
+              metadata: normalized.metadata,
+              lines: {
+                create: normalized.lines.map((line) => ({
+                  accountId: line.accountId,
+                  direction: line.direction,
+                  amount: line.amount,
+                  description: line.description,
+                  metadata: line.metadata,
+                })),
+              },
+            },
+            include: { lines: true },
+          });
+
+          return tx.financialJournal.update({
+            where: { id: journal.id },
+            data: { status: 'POSTED', postedAt: new Date() },
+            include: { lines: true },
+          });
+        }, {
+          isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+          maxWait: 5000,
+          timeout: 10000,
+        });
+      } catch (error) {
+        if (!isRetryableSerialization(error) || attempt === 2) {
+          if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+            const existing = await prisma.financialJournal.findUnique({
+              where: { idempotencyKey: normalized.idempotencyKey },
+              include: { lines: true },
+            });
+            if (existing) {
+              if (existing.requestHash !== hash) {
+                throw new FinancialDomainError('IDEMPOTENCY_CONFLICT', 'Idempotency key was already used for a different financial request', 409);
+              }
+              return existing;
+            }
+          }
+          throw error;
         }
-        return existing;
       }
-
-      const accounts = await tx.financialAccount.findMany({
-        where: { id: { in: normalized.lines.map((line) => line.accountId) } },
-        select: { id: true, currency: true, status: true },
-      });
-      const byId = new Map(accounts.map((account) => [account.id, account]));
-      for (const line of normalized.lines) {
-        const account = byId.get(line.accountId);
-        if (!account) throw new FinancialDomainError('ACCOUNT_NOT_FOUND', 'Financial account not found', 404);
-        if (account.status !== 'ACTIVE') throw new FinancialDomainError('ACCOUNT_DISABLED', 'Financial account is disabled');
-        if (account.currency !== normalized.currency) throw new FinancialDomainError('ACCOUNT_CURRENCY_MISMATCH', 'Financial account currency does not match journal currency');
-      }
-
-      const journal = await tx.financialJournal.create({
-        data: {
-          reference: normalized.reference,
-          description: normalized.description,
-          currency: normalized.currency,
-          status: 'DRAFT',
-          idempotencyKey: normalized.idempotencyKey,
-          requestHash: hash,
-          source: normalized.source,
-          metadata: normalized.metadata,
-          lines: {
-            create: normalized.lines.map((line) => ({
-              accountId: line.accountId,
-              direction: line.direction,
-              amount: line.amount,
-              description: line.description,
-              metadata: line.metadata,
-            })),
-          },
-        },
-        include: { lines: true },
-      });
-
-      return tx.financialJournal.update({
-        where: { id: journal.id },
-        data: { status: 'POSTED', postedAt: new Date() },
-        include: { lines: true },
-      });
-    }, {
-      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
-      maxWait: 5000,
-      timeout: 10000,
-    });
+    }
+    throw new Error('Financial transaction retry limit reached');
   }
 
   static async getAccountBalance(accountId: string) {
