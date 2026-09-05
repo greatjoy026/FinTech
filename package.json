@@ -47,7 +47,7 @@
     "pg": "^8.21.0",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
-    "react-router-dom": "^7.15.1",
+    "react-router-dom": "^7.18.3",
     "recharts": "^3.8.1",
     "shadcn": "^4.7.0",
     "socket.io": "^4.8.3",
@@ -67,18 +67,36 @@
     "@types/pg": "^8.20.0",
     "@types/uuid": "^10.0.0",
     "autoprefixer": "^10.4.21",
-    "esbuild": "^0.25.0",
+    "esbuild": "^0.28.2",
     "eslint": "^10.4.0",
+    "prisma": "^7.10.0",
     "tailwindcss": "^4.1.14",
     "tsx": "^4.21.0",
     "typescript": "~5.8.2",
-    "vite": "^6.2.3"
+    "vite": "^7.3.6"
   },
   "overrides": {
     "node-fetch": "^2.7.0",
     "qs": "^6.16.0",
     "mysql2": "^3.24.3",
     "valibot": "^1.4.2",
-    "deepmerge-ts": "^8.0.0"
+    "deepmerge-ts": "^8.0.2",
+    "@babel/core": "^7.29.7",
+    "@grpc/grpc-js": "^1.14.4",
+    "@hono/node-server": "^2.1.1",
+    "@prisma/dev": "^0.25.2",
+    "brace-expansion": "^5.0.9",
+    "browserslist": "^4.28.9",
+    "fast-uri": "^4.1.4",
+    "hono": "^4.13.7",
+    "ip-address": "^10.7.0",
+    "js-yaml": "^5.4.1",
+    "nanoid": "^6.0.1",
+    "postcss": "^8.5.28",
+    "postcss-selector-parser": "^7.1.6",
+    "protobufjs": "^8.8.0",
+    "socket.io-parser": "^4.2.7",
+    "websocket-driver": "^0.7.5",
+    "ws": "^8.21.3"
   }
 }
