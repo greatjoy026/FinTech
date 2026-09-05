@@ -15,6 +15,7 @@ function requireTrustedFirestoreConfig() {
   const email = process.env.FIREBASE_CLIENT_EMAIL?.trim();
   const key = process.env.FIREBASE_PRIVATE_KEY?.trim();
   if (!json && !file && !(email && key)) throw new Error('[Config] Trusted Firestore credentials are required');
+  if (!process.env.FIRESTORE_DATABASE_ID?.trim()) throw new Error('[Config] FIRESTORE_DATABASE_ID is required');
 }
 
 export const env = {
