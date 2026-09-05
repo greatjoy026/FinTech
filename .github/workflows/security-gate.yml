@@ -34,7 +34,11 @@ jobs:
         run: npm run abuse:security:verify
       - name: Audit security regression gate
         run: npm run audit:security:verify
+      - name: Configuration and secret hygiene gate
+        run: npm run config:security:verify
       - name: TypeScript gate
         run: npm run lint
       - name: Production build gate
         run: npm run build
+      - name: Built artifact secret leakage gate
+        run: npm run bundle:security:verify
