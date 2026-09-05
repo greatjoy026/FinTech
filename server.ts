@@ -14,6 +14,7 @@ import { logger } from './backend/observability/logger';
 import { observabilityMiddleware } from './backend/observability/middleware';
 import { prometheusMetrics } from './backend/observability/metrics';
 import { liveness, readiness } from './backend/observability/health';
+import { shutdownOnce } from './backend/reliability/lifecycle';
 import { webhookController } from './src/backend/webhook/webhook.controller';
 import { RealtimeGateway } from './src/backend/realtime/socket.gateway';
 import { QueueService } from './src/backend/queue/queue.service';
@@ -30,20 +31,16 @@ async function startServer() {
   app.use(observabilityMiddleware);
   app.use(securityMethodGuard);
   app.use(helmet({ contentSecurityPolicy: process.env.NODE_ENV === 'production', crossOriginEmbedderPolicy: false }));
-  app.use(cors({
-    origin: (origin, callback) => {
-      if (!origin || env.allowedOrigins.includes(origin)) return callback(null, true);
-      return callback(new Error('CORS origin denied'));
-    }, credentials: true, methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Authorization', 'Content-Type', 'X-Request-ID'], maxAge: 600,
-  }));
+  app.use(cors({ origin: (origin, callback) => {
+    if (!origin || env.allowedOrigins.includes(origin)) return callback(null, true);
+    return callback(new Error('CORS origin denied'));
+  }, credentials: true, methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'], allowedHeaders: ['Authorization', 'Content-Type', 'X-Request-ID'], maxAge: 600 }));
   app.use(express.json({ limit: '1mb', verify: (req, _res, buffer) => { (req as typeof req & { rawBody?: Buffer }).rawBody = Buffer.from(buffer); } }));
   app.use(express.urlencoded({ extended: false, limit: '100kb' }));
 
   app.use('/api/auth', authRouter);
   app.use('/api/reports', authenticate, requireAdmin, abuseRateLimit({ scope: 'reports', limit: 60, windowSeconds: 60 }), reportingRouter);
   app.post('/api/webhooks/monime', webhookController);
-
   RealtimeGateway.initialize(server);
   try { QueueService.initializeProcessors(); logger.info('QUEUE_PROCESSORS_INITIALIZED'); }
   catch (error) { logger.error('QUEUE_PROCESSOR_INITIALIZATION_FAILURE', { error: error instanceof Error ? error.name : 'unknown' }); }
@@ -70,7 +67,13 @@ async function startServer() {
   }
   app.use(notFoundHandler);
   app.use(errorHandler);
+
+  const shutdown = () => { void shutdownOnce(server); };
+  process.once('SIGTERM', shutdown);
+  process.once('SIGINT', shutdown);
+
   server.listen(PORT, '0.0.0.0', () => logger.info('SERVER_STARTED', { port: PORT }));
+  return server;
 }
 
-startServer().catch(error => { logger.error('STARTUP_FATAL', { error: error instanceof Error ? error.message : 'unknown error' }); process.exit(1); });
+startServer().catch(error => { logger.error('STARTUP_FATAL', { error: error instanceof Error ? error.name : 'unknown' }); process.exit(1); });
