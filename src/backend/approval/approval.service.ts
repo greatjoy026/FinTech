@@ -51,13 +51,11 @@ export class ApprovalWorkflowEngine {
       }
     });
 
-    await AuditService.record({
-      actorId: approverId,
-      role: 'ADMIN',
+    await AuditService.logAction({
+      actor: approverId,
       action: 'APPROVE_WORKFLOW',
       resource: 'APPROVAL_REQUEST',
       resourceId: requestId,
-      outcome: 'SUCCESS',
       beforeState: { status: 'PENDING' },
       afterState: { status: 'APPROVED' }
     });
