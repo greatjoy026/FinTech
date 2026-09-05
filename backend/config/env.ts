@@ -2,11 +2,23 @@ import 'dotenv/config';
 
 const isProduction = process.env.NODE_ENV === 'production';
 
-function requiredSecret(name: string, minimumLength: number): string {
+function requiredValue(name: string): string {
   const value = process.env[name]?.trim();
   if (!value) throw new Error(`[Config] Missing required environment variable: ${name}`);
+  return value;
+}
+
+function requiredSecret(name: string, minimumLength: number): string {
+  const value = requiredValue(name);
   if (value.length < minimumLength) throw new Error(`[Config] Environment variable ${name} must be at least ${minimumLength} characters long`);
   return value;
+}
+
+function requireDatabaseConfig() {
+  const value = requiredValue('DATABASE_URL');
+  let url: URL;
+  try { url = new URL(value); } catch { throw new Error('[Config] DATABASE_URL must be a valid PostgreSQL connection URL'); }
+  if (url.protocol !== 'postgresql:' && url.protocol !== 'postgres:') throw new Error('[Config] DATABASE_URL must use a PostgreSQL protocol');
 }
 
 function requireTrustedFirestoreConfig() {
@@ -15,40 +27,47 @@ function requireTrustedFirestoreConfig() {
   const email = process.env.FIREBASE_CLIENT_EMAIL?.trim();
   const key = process.env.FIREBASE_PRIVATE_KEY?.trim();
   if (!json && !file && !(email && key)) throw new Error('[Config] Trusted Firestore credentials are required');
-  if (!process.env.FIRESTORE_DATABASE_ID?.trim()) throw new Error('[Config] FIRESTORE_DATABASE_ID is required');
+  requiredValue('FIRESTORE_DATABASE_ID');
 }
 
 function requireRedisConfig() {
   if (!isProduction) return;
-  if (!process.env.REDIS_HOST?.trim()) throw new Error('[Config] REDIS_HOST is required in production');
-  if (!process.env.REDIS_PORT?.trim()) throw new Error('[Config] REDIS_PORT is required in production');
+  requiredValue('REDIS_HOST');
+  requiredValue('REDIS_PORT');
 }
 
 function configuredOrigins(): string[] {
-  const value = process.env.APP_URL?.trim();
-  if (!value) {
-    if (isProduction) throw new Error('[Config] APP_URL is required in production');
-    return ['http://localhost:3000'];
+  const value = requiredValue('APP_URL');
+  const origins = value.split(',').map(origin => origin.trim()).filter(Boolean);
+  if (!origins.length) throw new Error('[Config] APP_URL must contain at least one trusted origin');
+  for (const origin of origins) {
+    let parsed: URL;
+    try { parsed = new URL(origin); } catch { throw new Error('[Config] APP_URL contains an invalid origin'); }
+    if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password || (parsed.pathname !== '/' && parsed.pathname !== '')) {
+      throw new Error('[Config] APP_URL must contain only HTTP(S) origins');
+    }
   }
-  return value.split(',').map(origin => origin.trim()).filter(Boolean);
+  return origins;
 }
 
 export const env = {
   nodeEnv: process.env.NODE_ENV || 'development',
   jwtSecret: requiredSecret('JWT_SECRET', 32),
   authDevOtp: isProduction ? undefined : process.env.AUTH_DEV_OTP?.trim() || undefined,
-  monimeWebhookSecret: isProduction ? requiredSecret('MONIME_WEBHOOK_SECRET', 32) : process.env.MONIME_WEBHOOK_SECRET?.trim(),
+  // Monime integration is intentionally deferred under CORE-001.
+  monimeApiToken: process.env.MONIME_API_TOKEN?.trim() || undefined,
+  monimeWebhookSecret: process.env.MONIME_WEBHOOK_SECRET?.trim() || undefined,
+  databaseUrl: requiredValue('DATABASE_URL'),
   redisHost: process.env.REDIS_HOST?.trim() || '127.0.0.1',
   redisPort: Number(process.env.REDIS_PORT || 6379),
   redisPassword: process.env.REDIS_PASSWORD?.trim() || undefined,
   allowedOrigins: configuredOrigins(),
 };
 
+requireDatabaseConfig();
 requireTrustedFirestoreConfig();
 requireRedisConfig();
 
-if (!Number.isInteger(env.redisPort) || env.redisPort < 1 || env.redisPort > 65535) {
-  throw new Error('[Config] REDIS_PORT must be a valid TCP port');
-}
-
+if (!Number.isInteger(env.redisPort) || env.redisPort < 1 || env.redisPort > 65535) throw new Error('[Config] REDIS_PORT must be a valid TCP port');
 if (isProduction && process.env.AUTH_DEV_OTP) throw new Error('[Config] AUTH_DEV_OTP must not be configured in production');
+if (isProduction && process.env.GEMINI_API_KEY) throw new Error('[Config] GEMINI_API_KEY is not a server configuration variable');
