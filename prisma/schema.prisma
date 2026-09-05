@@ -1,5 +1,5 @@
 // This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
+// learn more about it: https://pris.ly/d/prisma-schema
 
 generator client {
   provider = "prisma-client-js"
@@ -9,201 +9,168 @@ datasource db {
   provider = "postgresql"
 }
 
-// -----------------------------------------------------
-// 1. FINANCIAL LEDGER ENGINE
-// -----------------------------------------------------
-
 model LedgerAccount {
-  id          String   @id @default(uuid())
-  name        String
-  code        String   @unique
-  type        String   // ASSET, LIABILITY, EQUITY, REVENUE, EXPENSE
-  currency    String   @default("USD")
-  balance     BigInt   @default(0) // Internal quick reference, NOT source of truth
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  entries     LedgerEntry[]
+  id String @id @default(uuid())
+  name String
+  code String @unique
+  type String
+  currency String @default("USD")
+  balance BigInt @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  entries LedgerEntry[]
 }
 
 model JournalTransaction {
-  id            String   @id @default(uuid())
-  reference     String   @unique // e.g., tx_xyz
-  description   String
-  metadata      Json?
-  status        String   // PENDING, POSTED, REVERSED
-  createdAt     DateTime @default(now())
-  postedAt      DateTime?
-
-  entries       LedgerEntry[]
+  id String @id @default(uuid())
+  reference String @unique
+  description String
+  metadata Json?
+  status String
+  createdAt DateTime @default(now())
+  postedAt DateTime?
+  entries LedgerEntry[]
 }
 
 model LedgerEntry {
-  id            String   @id @default(uuid())
+  id String @id @default(uuid())
   transactionId String
-  accountId     String
-  type          String   // DEBIT or CREDIT
-  amount        BigInt
-  createdAt     DateTime @default(now())
-
-  transaction   JournalTransaction @relation(fields: [transactionId], references: [id])
-  account       LedgerAccount      @relation(fields: [accountId], references: [id])
-  
+  accountId String
+  type String
+  amount BigInt
+  createdAt DateTime @default(now())
+  transaction JournalTransaction @relation(fields: [transactionId], references: [id])
+  account LedgerAccount @relation(fields: [accountId], references: [id])
   @@index([accountId])
   @@index([transactionId])
 }
 
-// -----------------------------------------------------
-// 2. WALLET INFRASTRUCTURE
-// -----------------------------------------------------
-
 model Wallet {
-  id              String   @id @default(uuid())
-  userId          String   // References user from external Auth / existing schema
-  currency        String   @default("USD")
-  status          String   @default("ACTIVE") // ACTIVE, FROZEN, CLOSED
-  
-  // Balances in minor units
-  availableBalance BigInt   @default(0)
-  pendingBalance   BigInt   @default(0)
-  reservedBalance  BigInt   @default(0)
-
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  transactions    WalletTransaction[]
-  freezes         WalletFreeze[]
+  id String @id @default(uuid())
+  userId String
+  currency String @default("USD")
+  status String @default("ACTIVE")
+  availableBalance BigInt @default(0)
+  pendingBalance BigInt @default(0)
+  reservedBalance BigInt @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  transactions WalletTransaction[]
+  freezes WalletFreeze[]
 }
 
 model WalletTransaction {
-  id            String   @id @default(uuid())
-  walletId      String
-  reference     String   @unique
-  type          String   // DEPOSIT, WITHDRAWAL, TRANSFER, FEE
-  amount        BigInt
-  status        String   // PENDING, COMPLETED, FAILED, REVERSED
-  metadata      Json?
-  
-  createdAt     DateTime @default(now())
-
-  wallet        Wallet   @relation(fields: [walletId], references: [id])
-  
+  id String @id @default(uuid())
+  walletId String
+  reference String @unique
+  type String
+  amount BigInt
+  status String
+  metadata Json?
+  createdAt DateTime @default(now())
+  wallet Wallet @relation(fields: [walletId], references: [id])
   @@index([walletId])
 }
 
 model WalletFreeze {
-  id            String   @id @default(uuid())
-  walletId      String
-  reason        String
-  frozenBy      String   // Admin ID
-  unfrozenAt    DateTime?
-  unfrozenBy    String?
-  createdAt     DateTime @default(now())
-
-  wallet        Wallet   @relation(fields: [walletId], references: [id])
+  id String @id @default(uuid())
+  walletId String
+  reason String
+  frozenBy String
+  unfrozenAt DateTime?
+  unfrozenBy String?
+  createdAt DateTime @default(now())
+  wallet Wallet @relation(fields: [walletId], references: [id])
 }
 
-// -----------------------------------------------------
-// 3. PAYMENT & SETTLEMENT (Monime Integration)
-// -----------------------------------------------------
-
 model PaymentIntent {
-  id            String   @id @default(uuid())
-  reference     String   @unique
-  amount        BigInt
-  currency      String
-  status        String   // PENDING, PROCESSING, SUCCESS, FAILED
-  provider      String   @default("monime")
-  providerRef   String?
-  metadata      Json?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id String @id @default(uuid())
+  reference String @unique
+  amount BigInt
+  currency String
+  status String
+  provider String @default("monime")
+  providerRef String?
+  metadata Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Settlement {
-  id            String   @id @default(uuid())
-  reference     String   @unique
-  amount        BigInt
-  currency      String
-  status        String   // PENDING, SETTLED, MISMATCH
-  providerRef   String?
-  settledAt     DateTime?
-  createdAt     DateTime @default(now())
+  id String @id @default(uuid())
+  reference String @unique
+  amount BigInt
+  currency String
+  status String
+  providerRef String?
+  settledAt DateTime?
+  createdAt DateTime @default(now())
 }
-
-// -----------------------------------------------------
-// 4. WEBHOOKS & EVENTS
-// -----------------------------------------------------
 
 model WebhookEvent {
-  id            String   @id @default(uuid())
-  provider      String   @default("monime")
-  eventType     String
-  payload       Json
-  status        String   // PENDING, PROCESSED, FAILED
-  error         String?
-  attempts      Int      @default(0)
-  createdAt     DateTime @default(now())
-  processedAt   DateTime?
+  id String @id @default(uuid())
+  provider String @default("monime")
+  eventType String
+  payload Json
+  status String
+  error String?
+  attempts Int @default(0)
+  createdAt DateTime @default(now())
+  processedAt DateTime?
 }
-
-// -----------------------------------------------------
-// 7. AUDIT LOGGING SYSTEM
-// -----------------------------------------------------
 
 model AuditLog {
-  id            String   @id @default(uuid())
-  actor         String   // User/Admin ID
-  action        String
-  resource      String   // e.g., 'WALLET', 'PAYOUT'
-  resourceId    String
-  beforeState   Json?
-  afterState    Json?
-  ipAddress     String?
-  device        String?
-  createdAt     DateTime @default(now())
+  id String @id @default(uuid())
+  actor String
+  action String
+  resource String
+  resourceId String
+  outcome String @default("SUCCESS")
+  requestId String?
+  beforeState Json?
+  afterState Json?
+  metadata Json?
+  integrityHash String @unique
+  ipAddress String?
+  device String?
+  createdAt DateTime @default(now())
+  @@index([actor, createdAt])
+  @@index([resource, resourceId, createdAt])
+  @@index([requestId])
 }
-
-// -----------------------------------------------------
-// 9. APPROVAL WORKFLOWS
-// -----------------------------------------------------
 
 model ApprovalRequest {
-  id            String   @id @default(uuid())
-  type          String   // PAYOUT, REVERSAL, NGO_DISBURSE, etc.
-  status        String   // PENDING, APPROVED, REJECTED
-  payload       Json
-  makerId       String
-  checkerId     String?
-  approverId    String?
-  rejectionRsn  String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id String @id @default(uuid())
+  type String
+  status String
+  payload Json
+  makerId String
+  checkerId String?
+  approverId String?
+  rejectionRsn String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
-// -----------------------------------------------------
-// 10. FRAUD & COMPLIANCE
-// -----------------------------------------------------
-
 model FraudAlert {
-  id            String   @id @default(uuid())
-  userId        String?
-  walletId      String?
-  riskLevel     String   // LOW, MEDIUM, HIGH, CRITICAL
+  id String @id @default(uuid())
+  userId String?
+  walletId String?
+  riskLevel String
   ruleTriggered String
-  metadata      Json?
-  status        String   // OPEN, INVESTIGATING, RESOLVED, FALSE_POSITIVE
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  metadata Json?
+  status String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Payout {
-  id            String   @id @default(uuid())
-  walletId      String
-  amount        BigInt
-  currency      String
-  destination   Json     // Bank/Mobile money details
-  status        String   // PENDING_APPROVAL, APPROVED, PROCESSING, COMPLETED, FAILED
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id String @id @default(uuid())
+  walletId String
+  amount BigInt
+  currency String
+  destination Json
+  status String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
