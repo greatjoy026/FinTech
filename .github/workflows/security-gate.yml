@@ -37,6 +37,9 @@ jobs:
       - name: API security regression gate
         run: npm run api:security:verify
 
+      - name: Abuse protection security regression gate
+        run: npm run abuse:security:verify
+
       - name: TypeScript gate
         run: npm run lint
 
