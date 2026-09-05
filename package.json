@@ -14,6 +14,7 @@
     "auth:security:verify": "tsx scripts/auth-security-verify.ts",
     "authorization:security:verify": "tsx scripts/authorization-security-verify.ts",
     "api:security:verify": "node scripts/api-security-verify.mjs",
+    "abuse:security:verify": "node scripts/abuse-security-verify.mjs",
     "postinstall": "prisma generate"
   },
   "dependencies": {
@@ -58,6 +59,12 @@
     "@types/cors": "^2.8.19",
     "@types/express": "^4.17.21",
     "@types/jsonwebtoken": "^9.0.10",
+    "@types/node": "^22.14.0",
+    "@types/pg": "^8.20.0",
+    "@types/uuid": "^10.0.0",
+    "autoprefixer": "^10.4.21",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^4.17.21",
     "@types/node": "^22.14.0",
     "@types/pg": "^8.20.0",
     "@types/uuid": "^10.0.0",
