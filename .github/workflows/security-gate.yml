@@ -20,8 +20,10 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Install dependencies
-        run: npm install --no-audit --no-fund
+      - name: Install dependencies (frozen lockfile)
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Restore generated Prisma client
+        run: npx prisma generate
       - name: Static security gate
         run: npm run security:verify
       - name: Authentication security regression gate
@@ -36,6 +38,10 @@ jobs:
         run: npm run audit:security:verify
       - name: Configuration and secret hygiene gate
         run: npm run config:security:verify
+      - name: Dependency supply-chain gate
+        run: npm run dependency:security:verify
+      - name: Dependency vulnerability audit
+        run: npm audit --audit-level=high
       - name: TypeScript gate
         run: npm run lint
       - name: Production build gate
