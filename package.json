@@ -31,6 +31,8 @@
     "architecture-closure:security:verify": "node scripts/architecture-closure-security-verify.mjs",
     "accounting:security:verify": "node scripts/accounting-security-verify.mjs",
     "accounting:invariants:test": "tsx scripts/accounting-invariants-verify.ts",
+    "wallet:security:verify": "node scripts/wallet-security-verify.mjs",
+    "wallet:invariants:test": "tsx scripts/wallet-invariants-verify.ts",
     "postinstall": "prisma generate"
   },
   "dependencies": {
