@@ -43,4 +43,6 @@ Authorization failures use generic `Unauthorized` / `Forbidden` responses and do
 - cross-user resource access is denied;
 - empty/invalid principals fail the ownership check.
 
+The CI gate also runs the static security, authentication security, TypeScript, and production-build checks before a successful result is accepted.
+
 This remediation does not redesign wallet, ledger, payment-provider, settlement, product, or inventory domains.
