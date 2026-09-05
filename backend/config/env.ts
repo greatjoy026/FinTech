@@ -18,12 +18,27 @@ function requireTrustedFirestoreConfig() {
   if (!process.env.FIRESTORE_DATABASE_ID?.trim()) throw new Error('[Config] FIRESTORE_DATABASE_ID is required');
 }
 
+function requireRedisConfig() {
+  if (!isProduction) return;
+  if (!process.env.REDIS_HOST?.trim()) throw new Error('[Config] REDIS_HOST is required in production');
+  if (!process.env.REDIS_PORT?.trim()) throw new Error('[Config] REDIS_PORT is required in production');
+}
+
 export const env = {
   nodeEnv: process.env.NODE_ENV || 'development',
   jwtSecret: requiredSecret('JWT_SECRET', 32),
   authDevOtp: isProduction ? undefined : process.env.AUTH_DEV_OTP?.trim() || undefined,
   monimeWebhookSecret: isProduction ? requiredSecret('MONIME_WEBHOOK_SECRET', 32) : process.env.MONIME_WEBHOOK_SECRET?.trim(),
+  redisHost: process.env.REDIS_HOST?.trim() || '127.0.0.1',
+  redisPort: Number(process.env.REDIS_PORT || 6379),
+  redisPassword: process.env.REDIS_PASSWORD?.trim() || undefined,
 };
 
 requireTrustedFirestoreConfig();
+requireRedisConfig();
+
+if (!Number.isInteger(env.redisPort) || env.redisPort < 1 || env.redisPort > 65535) {
+  throw new Error('[Config] REDIS_PORT must be a valid TCP port');
+}
+
 if (isProduction && process.env.AUTH_DEV_OTP) throw new Error('[Config] AUTH_DEV_OTP must not be configured in production');
