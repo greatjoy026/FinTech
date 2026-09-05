@@ -24,6 +24,7 @@
     "observability:security:verify": "node scripts/observability-security-verify.mjs",
     "reliability:security:verify": "node scripts/reliability-security-verify.mjs",
     "deployment:security:verify": "node scripts/deployment-security-verify.mjs",
+    "release:security:verify": "node scripts/release-security-verify.mjs",
     "postinstall": "prisma generate"
   },
   "dependencies": {
