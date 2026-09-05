@@ -32,26 +32,15 @@ function normalize(input: PostJournalInput) {
   if (!input.description.trim() || !input.source.trim()) throw new FinancialDomainError('INVALID_JOURNAL', 'Invalid journal metadata');
   if (input.lines.length < 2) throw new FinancialDomainError('INVALID_JOURNAL', 'A journal requires at least two lines');
 
-  const lines = input.lines.map((line) => ({
-    accountId: line.accountId,
-    direction: line.direction,
-    amount: line.amount,
-    description: line.description,
-    metadata: line.metadata,
-  }));
-
+  const lines = input.lines.map((line) => ({ accountId: line.accountId, direction: line.direction, amount: line.amount, description: line.description, metadata: line.metadata }));
   let debit = 0n;
   let credit = 0n;
   for (const line of lines) {
-    if (!line.accountId || !['DEBIT', 'CREDIT'].includes(line.direction)) {
-      throw new FinancialDomainError('INVALID_JOURNAL', 'Invalid journal line');
-    }
+    if (!line.accountId || !['DEBIT', 'CREDIT'].includes(line.direction)) throw new FinancialDomainError('INVALID_JOURNAL', 'Invalid journal line');
     if (line.amount <= 0n) throw new FinancialDomainError('INVALID_AMOUNT', 'Financial amounts must be positive');
-    if (line.direction === 'DEBIT') debit += line.amount;
-    else credit += line.amount;
+    if (line.direction === 'DEBIT') debit += line.amount; else credit += line.amount;
   }
   if (debit === 0n || debit !== credit) throw new FinancialDomainError('UNBALANCED_JOURNAL', 'Journal debits and credits must balance');
-
   return { ...input, currency: input.currency.toUpperCase(), lines, debit, credit };
 }
 
@@ -61,13 +50,7 @@ function requestHash(input: ReturnType<typeof normalize>): string {
     description: input.description,
     source: input.source,
     currency: input.currency,
-    lines: input.lines.map((line) => ({
-      accountId: line.accountId,
-      direction: line.direction,
-      amount: line.amount.toString(),
-      description: line.description ?? null,
-      metadata: line.metadata ?? null,
-    })),
+    lines: input.lines.map((line) => ({ accountId: line.accountId, direction: line.direction, amount: line.amount.toString(), description: line.description ?? null, metadata: line.metadata ?? null })),
     metadata: input.metadata ?? null,
   });
   return crypto.createHash('sha256').update(canonical).digest('hex');
@@ -80,21 +63,13 @@ function isRetryableSerialization(error: unknown): boolean {
 async function postJournalInTransaction(tx: Prisma.TransactionClient, input: PostJournalInput) {
   const normalized = normalize(input);
   const hash = requestHash(normalized);
-  const existing = await tx.financialJournal.findUnique({
-    where: { idempotencyKey: normalized.idempotencyKey },
-    include: { lines: true },
-  });
+  const existing = await tx.financialJournal.findUnique({ where: { idempotencyKey: normalized.idempotencyKey }, include: { lines: true } });
   if (existing) {
-    if (existing.requestHash !== hash) {
-      throw new FinancialDomainError('IDEMPOTENCY_CONFLICT', 'Idempotency key was already used for a different financial request', 409);
-    }
+    if (existing.requestHash !== hash) throw new FinancialDomainError('IDEMPOTENCY_CONFLICT', 'Idempotency key was already used for a different financial request', 409);
     return existing;
   }
 
-  const accounts = await tx.financialAccount.findMany({
-    where: { id: { in: normalized.lines.map((line) => line.accountId) } },
-    select: { id: true, currency: true, status: true },
-  });
+  const accounts = await tx.financialAccount.findMany({ where: { id: { in: normalized.lines.map((line) => line.accountId) } }, select: { id: true, currency: true, status: true } });
   const byId = new Map(accounts.map((account) => [account.id, account]));
   for (const line of normalized.lines) {
     const account = byId.get(line.accountId);
@@ -113,24 +88,12 @@ async function postJournalInTransaction(tx: Prisma.TransactionClient, input: Pos
       requestHash: hash,
       source: normalized.source,
       metadata: normalized.metadata,
-      lines: {
-        create: normalized.lines.map((line) => ({
-          accountId: line.accountId,
-          direction: line.direction,
-          amount: line.amount,
-          description: line.description,
-          metadata: line.metadata,
-        })),
-      },
+      lines: { create: normalized.lines.map((line) => ({ accountId: line.accountId, direction: line.direction, amount: line.amount, description: line.description, metadata: line.metadata })) },
     },
     include: { lines: true },
   });
 
-  return tx.financialJournal.update({
-    where: { id: journal.id },
-    data: { status: 'POSTED', postedAt: new Date() },
-    include: { lines: true },
-  });
+  return tx.financialJournal.update({ where: { id: journal.id }, data: { status: 'POSTED', postedAt: new Date() }, include: { lines: true } });
 }
 
 export class AccountingService {
@@ -138,18 +101,16 @@ export class AccountingService {
     normalize(input);
     for (let attempt = 0; attempt < 3; attempt += 1) {
       try {
-        return await prisma.$transaction((tx) => postJournalInTransaction(tx, input), {
-          isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
-          maxWait: 5000,
-          timeout: 10000,
-        });
+        return await prisma.$transaction((tx) => postJournalInTransaction(tx, input), { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 5000, timeout: 10000 });
       } catch (error) {
         if (!isRetryableSerialization(error) || attempt === 2) {
           if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
             const normalized = normalize(input);
             const existing = await prisma.financialJournal.findUnique({ where: { idempotencyKey: normalized.idempotencyKey }, include: { lines: true } });
-            if (existing && existing.requestHash === requestHash(normalized)) return existing;
-            if (existing) throw new FinancialDomainError('IDEMPOTENCY_CONFLICT', 'Idempotency key was already used for a different financial request', 409);
+            if (existing) {
+              if (existing.requestHash !== requestHash(normalized)) throw new FinancialDomainError('IDEMPOTENCY_CONFLICT', 'Idempotency key was already used for a different financial request', 409);
+              return existing;
+            }
           }
           throw error;
         }
@@ -162,18 +123,21 @@ export class AccountingService {
     return postJournalInTransaction(tx, input);
   }
 
+  static async getAccountBalanceInTransaction(tx: Prisma.TransactionClient, accountId: string, accountType: string) {
+    const grouped = await tx.financialJournalLine.groupBy({ by: ['direction'], where: { accountId, journal: { status: 'POSTED' } }, _sum: { amount: true } });
+    const debit = grouped.find((row) => row.direction === 'DEBIT')?._sum.amount ?? 0n;
+    const credit = grouped.find((row) => row.direction === 'CREDIT')?._sum.amount ?? 0n;
+    const debitNormal = accountType === 'ASSET' || accountType === 'EXPENSE';
+    return debitNormal ? debit - credit : credit - debit;
+  }
+
   static async getAccountBalance(accountId: string) {
     const account = await prisma.financialAccount.findUnique({ where: { id: accountId }, select: { id: true, type: true, currency: true, status: true } });
     if (!account) throw new FinancialDomainError('ACCOUNT_NOT_FOUND', 'Financial account not found', 404);
-
-    const grouped = await prisma.financialJournalLine.groupBy({
-      by: ['direction'],
-      where: { accountId, journal: { status: 'POSTED' } },
-      _sum: { amount: true },
-    });
+    const balance = await AccountingService.getAccountBalanceInTransaction(prisma as unknown as Prisma.TransactionClient, accountId, account.type);
+    const grouped = await prisma.financialJournalLine.groupBy({ by: ['direction'], where: { accountId, journal: { status: 'POSTED' } }, _sum: { amount: true } });
     const debit = grouped.find((row) => row.direction === 'DEBIT')?._sum.amount ?? 0n;
     const credit = grouped.find((row) => row.direction === 'CREDIT')?._sum.amount ?? 0n;
-    const debitNormal = account.type === 'ASSET' || account.type === 'EXPENSE';
-    return { accountId, currency: account.currency, debit, credit, balance: debitNormal ? debit - credit : credit - debit };
+    return { accountId, currency: account.currency, debit, credit, balance };
   }
 }
