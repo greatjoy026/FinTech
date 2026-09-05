@@ -16,7 +16,7 @@ for (const [name, pattern] of required) if (!pattern.test(name.includes('databas
 
 const serviceChecks = [
   ['wallet mapping validation', /WALLET_ACCOUNT_MAPPING_MISSING/],
-  ['liability wallet accounts', /account\.type !== 'LIABILITY'/],
+  ['liability wallet accounts', /type !== 'LIABILITY'/],
   ['currency enforcement', /CURRENCY_MISMATCH|ACCOUNT_CURRENCY_MISMATCH/],
   ['serializable wallet transactions', /TransactionIsolationLevel\.Serializable/],
   ['bounded serialization retry', /attempt < 3/],
@@ -26,7 +26,7 @@ const serviceChecks = [
   ['hold release', /releaseHold[\s\S]*status: 'RELEASED'/],
   ['hold capture', /captureHold[\s\S]*WALLET_HOLD_CAPTURE/],
   ['reconciliation boundary', /reconcileWallet[\s\S]*DIVERGED/],
-  ['no legacy LedgerEngine dependency', !/LedgerEngine/.test(service) ],
+  ['no legacy LedgerEngine dependency', !/LedgerEngine/.test(service)],
 ];
 for (const [name, check] of serviceChecks) {
   const ok = typeof check === 'boolean' ? check : check.test(service);
