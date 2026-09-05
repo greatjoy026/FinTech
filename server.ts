@@ -22,11 +22,12 @@ import { reportingRouter } from './src/backend/reporting/reporting.controller';
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT || 3000);
+  if (!Number.isInteger(PORT) || PORT < 1 || PORT > 65535) throw new Error('[Config] PORT must be a valid TCP port');
   const server = http.createServer(app);
 
   app.disable('x-powered-by');
-  app.set('trust proxy', process.env.TRUST_PROXY === 'true' ? 1 : false);
+  app.set('trust proxy', env.trustProxy);
   app.use(requestIdMiddleware);
   app.use(observabilityMiddleware);
   app.use(securityMethodGuard);
