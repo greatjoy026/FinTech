@@ -29,7 +29,7 @@ jobs:
       - name: SEC-013 behavioral security regression gate
         run: npm run security:regression:verify
       - name: SEC-014 observability security regression gate
-        run: npm run observability:security-verify
+        run: npm run observability:security:verify
       - name: SEC-015 reliability regression gate
         run: npm run reliability:security:verify
       - name: SEC-016 deployment infrastructure security gate
