@@ -1,5 +1,5 @@
 import { prisma } from '../db/prisma';
-import { AuditService } from '../audit/audit.service';
+import { AuditService } from '../../../backend/audit/audit.service';
 import { RealtimeGateway } from '../realtime/socket.gateway';
 
 export class ApprovalWorkflowEngine {
@@ -51,11 +51,13 @@ export class ApprovalWorkflowEngine {
       }
     });
 
-    await AuditService.logAction({
-      actor: approverId,
+    await AuditService.record({
+      actorId: approverId,
+      role: 'ADMIN',
       action: 'APPROVE_WORKFLOW',
       resource: 'APPROVAL_REQUEST',
       resourceId: requestId,
+      outcome: 'SUCCESS',
       beforeState: { status: 'PENDING' },
       afterState: { status: 'APPROVED' }
     });
