@@ -17,6 +17,7 @@
     "abuse:security:verify": "node scripts/abuse-security-verify.mjs",
     "audit:security:verify": "node scripts/audit-security-verify.mjs",
     "config:security:verify": "node scripts/config-security-verify.mjs",
+    "dependency:security:verify": "node scripts/dependency-security-verify.mjs",
     "bundle:security:verify": "node scripts/bundle-security-verify.mjs",
     "postinstall": "prisma generate"
   },
