@@ -68,8 +68,13 @@ assertIncludes(service, 'idempotency', [
 if (service.includes('LedgerEngine')) throw new Error('Wallet gate failed: legacy LedgerEngine dependency remains');
 if (service.includes('setImmediate(')) throw new Error('Wallet gate failed: post-response financial work detected');
 
-assertIncludes(accounting, 'authoritative accounting', [
-  'FinancialJournalLine',
+assertIncludes(schema, 'authoritative accounting schema', [
+  'model FinancialJournalLine',
+  'amount BigInt',
+  'direction JournalLineDirection',
+]);
+assertIncludes(accounting, 'authoritative accounting service', [
+  'financialJournalLine',
   'TransactionIsolationLevel.Serializable',
   'postJournalInTransaction',
 ]);
