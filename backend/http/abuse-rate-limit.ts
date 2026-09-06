@@ -6,6 +6,7 @@ import { logger } from '../observability/logger';
 import { increment } from '../observability/metrics';
 
 const redis = new Redis({ host: env.redisHost, port: env.redisPort, password: env.redisPassword, lazyConnect: true, maxRetriesPerRequest: null });
+redis.on('error', () => {});
 let connectPromise: Promise<void> | null = null;
 const memory = new Map<string, { count: number; resetAt: number }>();
 function digest(value: string): string { return crypto.createHash('sha256').update(value, 'utf8').digest('hex'); }
@@ -27,8 +28,9 @@ export async function checkAbuseRateLimit(scope: string, identity: string, limit
   const key = bucketKey(scope, identity);
   if (env.nodeEnv !== 'production') return memoryAllow(key, limit, windowSeconds * 1000);
   try { await ensureRedis(); const count = await redis.incr(key); if (count === 1) await redis.expire(key, windowSeconds); if (count <= limit) return { allowed: true, retryAfter: 0 }; const ttl = await redis.ttl(key); return { allowed: false, retryAfter: Math.max(1, ttl) }; }
-  catch { logger.error('ABUSE_LIMITER_UNAVAILABLE', { scope }); // Production API abuse controls fail closed if the distributed limiter is unavailable.
-    return { allowed: false, retryAfter: 1 }; }
+  catch { logger.error('ABUSE_LIMITER_UNAVAILABLE', { scope });
+    return { allowed: false, retryAfter: 1 };
+  }
 }
 function identityFor(req: Request): string {
   const principal = (req as Request & { user?: { userId?: string } }).user?.userId;

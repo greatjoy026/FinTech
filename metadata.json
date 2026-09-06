@@ -1,6 +1,8 @@
 {
-  "name": "",
-  "description": "",
+  "name": "KaekteMoni Fintech Platform",
+  "description": "Multi-role payment infrastructure and financial ledger management platform.",
   "requestFramePermissions": [],
-  "majorCapabilities": []
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }

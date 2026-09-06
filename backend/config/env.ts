@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import crypto from 'crypto';
 
 const isProduction = process.env.NODE_ENV === 'production';
 
@@ -14,10 +15,27 @@ function requiredSecret(name: string, minimumLength: number): string {
   return value;
 }
 
+export function normalizeDatabaseUrl(raw: string): string {
+  if (!raw) return raw;
+  try {
+    new URL(raw);
+    return raw;
+  } catch {
+    const match = raw.match(/^(postgres(?:ql)?:\/\/)([^:]+):([^@]+)@(.*)$/);
+    if (match) {
+      const [, proto, user, pass, rest] = match;
+      const encodedPass = encodeURIComponent(decodeURIComponent(pass));
+      return `${proto}${user}:${encodedPass}@${rest}`;
+    }
+    return raw;
+  }
+}
+
 function requireDatabaseConfig() {
   const value = requiredValue('DATABASE_URL');
+  const normalized = normalizeDatabaseUrl(value);
   let url: URL;
-  try { url = new URL(value); } catch { throw new Error('[Config] DATABASE_URL must be a valid PostgreSQL connection URL'); }
+  try { url = new URL(normalized); } catch { throw new Error('[Config] DATABASE_URL must be a valid PostgreSQL connection URL'); }
   if (url.protocol !== 'postgresql:' && url.protocol !== 'postgres:') throw new Error('[Config] DATABASE_URL must use a PostgreSQL protocol');
 }
 
@@ -65,7 +83,7 @@ export const env = {
   // Monime integration is intentionally deferred under CORE-001.
   monimeApiToken: process.env.MONIME_API_TOKEN?.trim() || undefined,
   monimeWebhookSecret: process.env.MONIME_WEBHOOK_SECRET?.trim() || undefined,
-  databaseUrl: requiredValue('DATABASE_URL'),
+  databaseUrl: normalizeDatabaseUrl(requiredValue('DATABASE_URL')),
   redisHost: process.env.REDIS_HOST?.trim() || '127.0.0.1',
   redisPort: Number(process.env.REDIS_PORT || 6379),
   redisPassword: process.env.REDIS_PASSWORD?.trim() || undefined,
