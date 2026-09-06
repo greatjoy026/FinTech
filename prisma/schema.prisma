@@ -68,6 +68,7 @@ model WalletTransaction {
   amount BigInt
   status String
   metadata Json?
+  requestHash String?
   createdAt DateTime @default(now())
   wallet Wallet @relation(fields: [walletId], references: [id])
   @@index([walletId])
