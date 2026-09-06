@@ -23,8 +23,7 @@ import { reportingRouter } from './src/backend/reporting/reporting.controller';
 
 async function startServer() {
   const app = express();
-  const PORT = Number(process.env.PORT || 3000);
-  if (!Number.isInteger(PORT) || PORT < 1 || PORT > 65535) throw new Error('[Config] PORT must be a valid TCP port');
+  const PORT = 3000;
   const server = http.createServer(app);
 
   app.disable('x-powered-by');
@@ -65,7 +64,7 @@ async function startServer() {
   } else {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath, { index: false }));
-    app.get('*', (req, res) => req.path.startsWith('/api/') ? notFoundHandler(req, res) : res.sendFile(path.join(distPath, 'index.html')));
+    app.get('*all', (req, res) => req.path.startsWith('/api/') ? notFoundHandler(req, res) : res.sendFile(path.join(distPath, 'index.html')));
   }
   app.use(notFoundHandler);
   app.use(errorHandler);
@@ -78,4 +77,4 @@ async function startServer() {
   return server;
 }
 
-startServer().catch(error => { logger.error('STARTUP_FATAL', { error: error instanceof Error ? error.name : 'unknown' }); process.exit(1); });
+startServer().catch(error => { console.error('STARTUP_FATAL_DETAILS:', error); logger.error('STARTUP_FATAL', { error: error instanceof Error ? error.name : 'unknown' }); process.exit(1); });

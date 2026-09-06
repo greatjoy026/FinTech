@@ -6,6 +6,7 @@ import { logger } from '../observability/logger';
 import { increment } from '../observability/metrics';
 
 const redis = new Redis({ host: env.redisHost, port: env.redisPort, password: env.redisPassword, lazyConnect: true, maxRetriesPerRequest: null });
+redis.on('error', () => {});
 let connectPromise: Promise<void> | null = null;
 const memory = new Map<string, { count: number; resetAt: number }>();
 function digest(value: string): string { return crypto.createHash('sha256').update(value, 'utf8').digest('hex'); }
