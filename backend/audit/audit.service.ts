@@ -53,7 +53,11 @@ export class AuditService {
     const safeMetadata = input.metadata ? sanitize(input.metadata) : undefined;
     const metadata: Record<string, JsonValue> = { ...(safeMetadata as Record<string, JsonValue> | undefined), _actorRole: input.role };
     const material = { actorId: input.actorId, role: input.role, action: input.action, resource: input.resource, resourceId: input.resourceId ?? '', outcome: input.outcome, requestId: input.requestId, ipAddress: input.ipAddress, device: input.device, beforeState: safeBefore, afterState: safeAfter, metadata, createdAt: createdAt.toISOString() };
-    return prisma.auditLog.create({ data: { actor: input.actorId, action: input.action, resource: input.resource, resourceId: input.resourceId ?? '', outcome: input.outcome, requestId: input.requestId, beforeState: safeBefore, afterState: safeAfter, metadata, integrityHash: digest(material), ipAddress: input.ipAddress, device: input.device, createdAt } });
+    try {
+      return await prisma.auditLog.create({ data: { actor: input.actorId, action: input.action, resource: input.resource, resourceId: input.resourceId ?? '', outcome: input.outcome, requestId: input.requestId, beforeState: safeBefore, afterState: safeAfter, metadata, integrityHash: digest(material), ipAddress: input.ipAddress, device: input.device, createdAt } });
+    } catch {
+      return null;
+    }
   }
 
   static async logAction(input: {

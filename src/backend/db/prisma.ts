@@ -1,9 +1,13 @@
 import { PrismaClient } from '@prisma/client';
 import { Pool } from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';
+import { normalizeDatabaseUrl } from '../../../backend/config/env';
 
-const connectionString = process.env.DATABASE_URL;
+const connectionString = normalizeDatabaseUrl(process.env.DATABASE_URL || '');
 const pool = new Pool({ connectionString });
+pool.on('error', (err) => {
+  console.warn('[DB Pool] Non-fatal database client error:', err.message);
+});
 const adapter = new PrismaPg(pool);
 
 // Use a singleton pattern to prevent multiple instances during hot-reloads.

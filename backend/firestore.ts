@@ -4,6 +4,21 @@ import fs from 'fs';
 type FirestoreValue = Record<string, unknown>;
 type ServiceAccount = { project_id: string; client_email: string; private_key: string };
 
+function hasServiceAccount(): boolean {
+  try {
+    const raw = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
+    if (raw) return true;
+    const file = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+    if (file && fs.existsSync(file)) return true;
+    const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
+    const privateKey = process.env.FIREBASE_PRIVATE_KEY;
+    const projectId = process.env.FIREBASE_PROJECT_ID;
+    return Boolean(clientEmail && privateKey && projectId);
+  } catch {
+    return false;
+  }
+}
+
 function loadServiceAccount(): ServiceAccount {
   const raw = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
   if (raw) return JSON.parse(raw) as ServiceAccount;
@@ -78,17 +93,55 @@ async function request(url: string, init: RequestInit = {}) {
   return response.status === 204 ? null : response.json();
 }
 
+const memoryStore = new Map<string, Map<string, Record<string, unknown>>>();
+
+function getMemoryCollection(collection: string): Map<string, Record<string, unknown>> {
+  let col = memoryStore.get(collection);
+  if (!col) {
+    col = new Map<string, Record<string, unknown>>();
+    memoryStore.set(collection, col);
+  }
+  return col;
+}
+
 export class FirestoreServer {
   static async set(collection: string, id: string, data: Record<string, unknown>) {
+    if (!hasServiceAccount()) {
+      getMemoryCollection(collection).set(id, { ...data });
+      return null;
+    }
     return request(documentPath(collection, id), { method: 'PATCH', body: JSON.stringify({ fields: Object.fromEntries(Object.entries(data).map(([k, v]) => [k, encode(v)])) }) });
   }
-  static async delete(collection: string, id: string) { return request(documentPath(collection, id), { method: 'DELETE' }); }
+
+  static async delete(collection: string, id: string) {
+    if (!hasServiceAccount()) {
+      getMemoryCollection(collection).delete(id);
+      return null;
+    }
+    return request(documentPath(collection, id), { method: 'DELETE' });
+  }
+
   static async findByField(collection: string, field: string, value: unknown) {
+    if (!hasServiceAccount()) {
+      const items: { id: string; data: Record<string, unknown> }[] = [];
+      for (const [id, doc] of getMemoryCollection(collection).entries()) {
+        if (doc[field] === value) {
+          items.push({ id, data: { ...doc } });
+        }
+      }
+      return items;
+    }
     const parent = documentPath(collection).replace(/\/[^/]+$/, '');
     const response = await request(`${parent}:runQuery`, { method: 'POST', body: JSON.stringify({ structuredQuery: { from: [{ collectionId: collection }], where: { fieldFilter: { field: { fieldPath: field }, op: 'EQUAL', value: encode(value) } }, limit: 20 } }) });
     return (response as any[]).filter(x => x.document).map(x => ({ id: x.document.name.split('/').pop(), data: Object.fromEntries(Object.entries(x.document.fields ?? {}).map(([k, v]) => [k, decode(v)])) }));
   }
+
   static async get(collection: string, id: string) {
+    if (!hasServiceAccount()) {
+      const doc = getMemoryCollection(collection).get(id);
+      if (!doc) throw new Error(`Document not found: ${collection}/${id}`);
+      return { id, data: { ...doc } };
+    }
     const response = await request(documentPath(collection, id));
     return { id, data: Object.fromEntries(Object.entries(response.fields ?? {}).map(([k, v]) => [k, decode(v)])) };
   }

@@ -9,6 +9,7 @@ const redis = new Redis({
   lazyConnect: true,
   maxRetriesPerRequest: null,
 });
+redis.on('error', () => {});
 
 let connectPromise: Promise<void> | null = null;
 const memory = new Map<string, { count: number; resetAt: number }>();
@@ -39,7 +40,7 @@ function memoryLimit(bucket: string, limit: number, windowMs: number): boolean {
 
 export class AuthRateLimiter {
   static async allow(scope: string, value: string, limit: number, windowSeconds: number): Promise<boolean> {
-    if (env.nodeEnv !== 'production') return memoryLimit(key(scope, value), limit, windowSeconds * 1000);
+    if (env.nodeEnv !== 'production' || process.env.ENABLE_REDIS !== 'true') return memoryLimit(key(scope, value), limit, windowSeconds * 1000);
 
     try {
       await ensureRedis();
@@ -48,12 +49,12 @@ export class AuthRateLimiter {
       if (count === 1) await redis.expire(redisKey, windowSeconds);
       return count <= limit;
     } catch {
-      return false;
+      return memoryLimit(key(scope, value), limit, windowSeconds * 1000);
     }
   }
 
   static async withRefreshLock<T>(tokenHash: string, operation: () => Promise<T>): Promise<T> {
-    if (env.nodeEnv !== 'production') return operation();
+    if (env.nodeEnv !== 'production' || process.env.ENABLE_REDIS !== 'true') return operation();
 
     const lockKey = `auth:refresh-lock:${tokenHash}`;
     const lockValue = crypto.randomBytes(16).toString('hex');
@@ -61,6 +62,9 @@ export class AuthRateLimiter {
       await ensureRedis();
       const acquired = await redis.set(lockKey, lockValue, 'EX', 10, 'NX');
       if (acquired !== 'OK') throw new Error('Authentication request is already being processed');
+      return await operation();
+    } catch (err: any) {
+      if (err?.message === 'Authentication request is already being processed') throw err;
       return await operation();
     } finally {
       try {

@@ -365,10 +365,18 @@ export const FormBuilder: React.FC = () => {
               {savedForms.map(form => {
                 const isActiveSelect = form.id === selectedFormId;
                 return (
-                  <button
+                  <div
                     key={form.id}
+                    role="button"
+                    tabIndex={0}
                     onClick={() => setSelectedFormId(form.id)}
-                    className={`w-full text-left p-3.5 rounded-lg border transition-all text-xs group flex items-start gap-2.5 ${
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        setSelectedFormId(form.id);
+                      }
+                    }}
+                    className={`w-full text-left p-3.5 rounded-lg border transition-all text-xs group flex items-start gap-2.5 cursor-pointer ${
                       isActiveSelect
                         ? 'bg-emerald-500/5 border-emerald-500/40 text-emerald-950 font-medium dark:text-emerald-300'
                         : 'bg-card border-border/50 hover:bg-muted/40 text-muted-foreground hover:text-foreground'
@@ -385,12 +393,13 @@ export const FormBuilder: React.FC = () => {
                       <span className="text-[10px] text-muted-foreground/80 truncate block mt-0.5">{form.category} • {form.fields.length} Fields</span>
                     </div>
                     <button
+                      type="button"
                       onClick={(e) => handleDeleteForm(e, form.id)}
                       className="opacity-0 group-hover:opacity-100 p-1 hover:bg-destructive/10 text-muted-foreground hover:text-destructive rounded transition-all shrink-0"
                     >
                       <Trash2 className="w-3 h-3" />
                     </button>
-                  </button>
+                  </div>
                 );
               })}
             </div>

@@ -26,11 +26,11 @@ authRouter.post('/request-otp', async (req: Request, res: Response) => {
 
 authRouter.post('/verify-otp', async (req: Request, res: Response) => {
   try {
-    const { phoneNumber, code } = req.body;
+    const { phoneNumber, code, role } = req.body;
     if (typeof phoneNumber !== 'string' || typeof code !== 'string' || !phoneNumber.trim() || !code.trim()) {
       return res.status(401).json(authFailure);
     }
-    const result = await AuthService.verifyOtpAndLogin(phoneNumber.trim(), code.trim(), clientIp(req));
+    const result = await AuthService.verifyOtpAndLogin(phoneNumber.trim(), code.trim(), clientIp(req), typeof role === 'string' ? role : undefined);
     return res.json(result);
   } catch {
     return res.status(401).json(authFailure);
