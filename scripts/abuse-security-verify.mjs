@@ -9,7 +9,7 @@ const pkg = JSON.parse(read('package.json'));
 const checks = [
   ['Dedicated abuse limiter exists', /export function abuseRateLimit/.test(limiter)],
   ['Production limiter uses Redis', /if \(env\.nodeEnv !== 'production'\).*memoryAllow/.test(limiter)],
-  ['Production limiter fails closed', /Production API abuse controls fail closed/.test(limiter) && /allowed: false/.test(limiter)],
+  ['Production limiter fails closed', /catch[\s\S]*return \{ allowed: false, retryAfter: 1 \}/.test(limiter)],
   ['Distributed counter is atomic', /await redis\.incr\(key\)/.test(limiter)],
   ['Rate-limit window is bounded', /await redis\.expire\(key, windowSeconds\)/.test(limiter)],
   ['Retry-After is emitted', /res\.setHeader\('Retry-After', String\(result\.retryAfter\)\)/.test(limiter)],
